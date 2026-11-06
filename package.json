@@ -1,0 +1,14 @@
+{
+  "name": "whopchat",
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "db:start": "powershell -Command \"& \\\"$env:USERPROFILE\\.cache\\mongodb-binaries\\mongod-x64-win32-8.2.6.exe\\\" --dbpath data/db --port 27017\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build:backend": "npm --prefix backend run build",
+    "build:client": "npm --prefix client run build",
+    "seed:backend": "npm --prefix backend run seed"
+  }
+}

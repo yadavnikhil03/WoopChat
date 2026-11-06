@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-base-bg: var(--bg);
+  --color-base-panel: var(--panel);
+  --color-base-border: var(--border);
+  --color-base-text: var(--text);
+  --color-base-muted: var(--muted);
+  --color-base-hover: var(--hover);
+  --color-base-primary: var(--primary);
+  --color-base-primary-fg: var(--primary-fg);
+}
+
+:root {
+  --bg: #ffffff;
+  --panel: #f4f4f5;
+  --border: #e4e4e7;
+  --text: #09090b;
+  --muted: #71717a;
+  --hover: #e4e4e7;
+  --primary: #09090b;
+  --primary-fg: #ffffff;
+}
+
+.dark {
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --border: #27272a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --hover: #27272a;
+  --primary: #ffffff;
+  --primary-fg: #000000;
+}
+
+body {
+  background-color: var(--color-base-bg);
+  color: var(--color-base-text);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  border-color: var(--color-base-border);
+}

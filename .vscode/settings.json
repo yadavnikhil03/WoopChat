@@ -1,0 +1,8 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "css.lint.validProperties": [],
+  "editor.quickSuggestions": {
+    "strings": true
+  }
+}
+
