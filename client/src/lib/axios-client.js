@@ -1,10 +1,12 @@
 import axios from "axios";
 
+const API_BASE_URL =
+  import.meta.env.MODE === "development"
+    ? `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api`
+    : "/api";
+
 export const API = axios.create({
-  baseURL:
-    import.meta.env.MODE === "development"
-      ? `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api`
-      : "/api",
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
@@ -19,18 +21,38 @@ API.interceptors.request.use((config) => {
 let isRefreshing = false;
 let refreshQueue = [];
 
+const flushRefreshQueue = (error, token = null) => {
+  refreshQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else {
+      resolve(token);
+    }
+  });
+  refreshQueue = [];
+};
+
 API.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
+    const url = original?.url || "";
+    const isAuthRoute =
+      url.includes("/auth/login") ||
+      url.includes("/auth/register") ||
+      url.includes("/auth/refresh");
+
+    if (error.response?.status === 401 && original && !original._retry && !isAuthRoute) {
       original._retry = true;
 
       if (isRefreshing) {
-        return new Promise((resolve) => {
-          refreshQueue.push((token) => {
-            original.headers.Authorization = `Bearer ${token}`;
-            resolve(API(original));
+        return new Promise((resolve, reject) => {
+          refreshQueue.push({
+            resolve: (token) => {
+              original.headers.Authorization = `Bearer ${token}`;
+              resolve(API(original));
+            },
+            reject,
           });
         });
       }
@@ -38,18 +60,19 @@ API.interceptors.response.use(
       isRefreshing = true;
       try {
         const { data } = await axios.post(
-          `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/auth/refresh`,
+          `${API_BASE_URL}/auth/refresh`,
           {},
           { withCredentials: true }
         );
         const newToken = data.data.accessToken;
         localStorage.setItem("accessToken", newToken);
-        refreshQueue.forEach((cb) => cb(newToken));
-        refreshQueue = [];
+        flushRefreshQueue(null, newToken);
         original.headers.Authorization = `Bearer ${newToken}`;
         return API(original);
-      } catch {
+      } catch (refreshError) {
         localStorage.removeItem("accessToken");
+        flushRefreshQueue(refreshError, null);
+        return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
       }

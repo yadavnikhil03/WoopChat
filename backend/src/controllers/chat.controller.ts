@@ -86,8 +86,10 @@ export class ChatController {
   static async getMessages(req: Request, res: Response): Promise<void> {
     try {
       const { _id } = (req as AuthenticatedRequest).user!;
-      const page = parseInt((req.query['page'] as string) || '1', 10);
-      const limit = parseInt((req.query['limit'] as string) || '50', 10);
+      const rawPage = parseInt((req.query['page'] as string) || '1', 10);
+      const rawLimit = parseInt((req.query['limit'] as string) || '50', 10);
+      const page = Number.isFinite(rawPage) ? Math.max(1, rawPage) : 1;
+      const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, rawLimit)) : 50;
       const messages = await ChatService.getMessages(req.params['chatId']!, _id, page, limit);
       sendSuccess(res, { messages });
     } catch (err: any) {
@@ -99,7 +101,22 @@ export class ChatController {
     try {
       const { _id } = (req as AuthenticatedRequest).user!;
       const chatId = req.params['chatId']!;
-      const { content, image, replyTo, isForwarded, audio, audioDuration } = req.body;
+      const {
+        content,
+        image,
+        replyTo,
+        isForwarded,
+        audio,
+        audioDuration,
+        messageType,
+        poll,
+        codeBlock,
+        digest,
+        whisperTo,
+        ephemeralSeconds,
+        scheduledFor,
+      } = req.body;
+
       const msg = await ChatService.sendMessage(
         chatId,
         _id,
@@ -108,15 +125,121 @@ export class ChatController {
         replyTo,
         isForwarded,
         audio,
-        audioDuration
+        audioDuration,
+        {
+          messageType: messageType === 'ai_copilot' ? 'text' : messageType,
+          poll,
+          codeBlock,
+          digest,
+          whisperTo,
+          ephemeralSeconds,
+          scheduledFor,
+        }
       );
+
+      if (!msg.isScheduledPending) {
+        try {
+          const io = getIO();
+          if (msg.whisperTo && msg.whisperTo.length > 0) {
+            emitToUser(io, _id, 'message:new', msg);
+            msg.whisperTo.forEach((recipient: any) => {
+              emitToUser(io, (recipient._id || recipient).toString(), 'message:new', msg);
+            });
+          } else {
+            io.to(`chat:${chatId}`).emit('message:new', msg);
+          }
+        } catch {}
+      }
+
+      sendSuccess(
+        res,
+        { message: msg },
+        msg.isScheduledPending ? 'Message scheduled' : 'Message sent',
+        201
+      );
+    } catch (err: any) {
+      sendError(res, err.message, 400);
+    }
+  }
+
+  static async votePoll(req: Request, res: Response): Promise<void> {
+    try {
+      const { _id } = (req as AuthenticatedRequest).user!;
+      const { optionId } = req.body;
+      if (!optionId) {
+        sendError(res, 'Option ID is required', 400);
+        return;
+      }
+      const msg = await ChatService.votePoll(req.params['messageId']!, _id, optionId);
+
+      try {
+        const io = getIO();
+        io.to(`chat:${msg.chatId.toString()}`).emit('poll:updated', {
+          messageId: (msg._id as any).toString(),
+          chatId: msg.chatId.toString(),
+          poll: msg.poll,
+        });
+      } catch {}
+
+      sendSuccess(res, { message: msg }, 'Vote recorded');
+    } catch (err: any) {
+      sendError(res, err.message, 400);
+    }
+  }
+
+  static async askInlineCopilot(req: Request, res: Response): Promise<void> {
+    try {
+      const { _id } = (req as AuthenticatedRequest).user!;
+      const chatId = req.params['chatId']!;
+      const prompt = (req.body?.prompt as string) || 'catch me up';
+      const msg = await ChatService.triggerInlineCopilot(chatId, _id, prompt);
 
       try {
         const io = getIO();
         io.to(`chat:${chatId}`).emit('message:new', msg);
       } catch {}
 
-      sendSuccess(res, { message: msg }, 'Message sent', 201);
+      sendSuccess(res, { message: msg }, 'WhopAI co-pilot replied', 201);
+    } catch (err: any) {
+      sendError(res, err.message, 400);
+    }
+  }
+
+  static async createDigest(req: Request, res: Response): Promise<void> {
+    try {
+      const { _id } = (req as AuthenticatedRequest).user!;
+      const chatId = req.params['chatId']!;
+      const publishToChat = Boolean(req.body?.publishToChat);
+      const result = await ChatService.createDigest(chatId, _id, publishToChat);
+
+      if (result.message) {
+        try {
+          const io = getIO();
+          io.to(`chat:${chatId}`).emit('message:new', result.message);
+        } catch {}
+      }
+
+      sendSuccess(res, result, 'Digest generated');
+    } catch (err: any) {
+      sendError(res, err.message, 400);
+    }
+  }
+
+  static async getScheduledMessages(req: Request, res: Response): Promise<void> {
+    try {
+      const { _id } = (req as AuthenticatedRequest).user!;
+      const messages = await ChatService.getScheduledMessages(req.params['chatId']!, _id);
+      sendSuccess(res, { messages });
+    } catch (err: any) {
+      sendError(res, err.message, 400);
+    }
+  }
+
+  static async cancelScheduledMessage(req: Request, res: Response): Promise<void> {
+    try {
+      const { _id } = (req as AuthenticatedRequest).user!;
+      await ChatService.cancelScheduledMessage(req.params['messageId']!, _id);
+      sendSuccess(res, null, 'Scheduled message cancelled');
     } catch (err: any) {
       sendError(res, err.message, 400);
     }
@@ -126,7 +249,7 @@ export class ChatController {
     try {
       const { _id } = (req as AuthenticatedRequest).user!;
       const msg = await ChatService.editMessage(req.params['messageId']!, _id, req.body.content);
-      
+
       try {
         const io = getIO();
         io.to(`chat:${(msg.chatId as any).toString()}`).emit('message:edited', msg);
@@ -160,23 +283,24 @@ export class ChatController {
   static async reactToMessage(req: Request, res: Response): Promise<void> {
     try {
       const { _id } = (req as AuthenticatedRequest).user!;
-      const { emoji, chatId } = req.body;
+      const { emoji } = req.body;
       if (!emoji) {
         sendError(res, 'Emoji is required', 400);
         return;
       }
       const msg = await ChatService.reactToMessage(req.params['messageId']!, _id, emoji);
+      const verifiedChatId = (msg.chatId as any).toString();
 
       try {
         const io = getIO();
         const emitPayload = {
           messageId: (msg._id as any).toString(),
-          chatId: chatId || (msg.chatId as any).toString(),
+          chatId: verifiedChatId,
           reactions: msg.reactions,
           userId: _id,
           emoji,
         };
-        io.to(`chat:${(msg.chatId as any).toString()}`).emit('message:reaction', emitPayload);
+        io.to(`chat:${verifiedChatId}`).emit('message:reaction', emitPayload);
       } catch {}
 
       sendSuccess(res, { reactions: msg.reactions }, 'Reaction updated');

@@ -21,6 +21,7 @@ export const mongooseOptions: mongoose.ConnectOptions = {
 };
 
 mongoose.set('strictQuery', true);
+mongoose.set('sanitizeFilter', true);
 
 mongoose.connection.on('connected', () => {
   console.log(`✅ MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
@@ -94,9 +95,6 @@ export const connectDB = async (): Promise<void> => {
     });
     console.log(`✅ MongoDB active via ${config.mongoUri}`);
     await syncAllIndexes();
-
-    const { seedDatabase } = await import('../utils/seed');
-    await seedDatabase(false, false);
     return;
   } catch {
     console.log(`ℹ️ No external MongoDB detected on ${config.mongoUri}. Starting embedded in-memory MongoDB...`);
@@ -113,9 +111,6 @@ export const connectDB = async (): Promise<void> => {
     });
     console.log(`✅ Embedded MongoDB active at: ${uri}`);
     await syncAllIndexes();
-
-    const { seedDatabase } = await import('../utils/seed');
-    await seedDatabase(false, false);
   } catch (err: any) {
     console.error('❌ Failed to initialize database:', err.message || err);
     process.exit(1);

@@ -23,6 +23,11 @@ export const config = {
     refreshExpiresIn: process.env['JWT_REFRESH_EXPIRES_IN'] ?? '7d',
   },
 
+  messageEncryptionKey:
+    process.env['NODE_ENV'] === 'production'
+      ? required('MESSAGE_ENCRYPTION_KEY')
+      : process.env['MESSAGE_ENCRYPTION_KEY'] ?? required('JWT_ACCESS_SECRET'),
+
   clientUrl: process.env['CLIENT_URL'] ?? 'http://localhost:5173',
 
   openai: {

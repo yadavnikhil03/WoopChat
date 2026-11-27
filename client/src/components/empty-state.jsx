@@ -1,17 +1,27 @@
 import { MessageSquare } from "lucide-react";
 
 const EmptyState = ({
-  title = "No chat selected",
-  description = "Pick a conversation from the list or start a new one",
+  title = "Select a conversation",
+  description = "Pick a thread from the sidebar or start a new room to begin messaging.",
 }) => {
   return (
-    <div className="w-full h-full flex-1 flex flex-col items-center justify-center bg-[var(--color-base-bg)] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] dark:bg-[radial-gradient(#1f2937_1px,transparent_1px)] [background-size:20px_20px] gap-6">
-      <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] shadow-sm">
-        <MessageSquare className="w-8 h-8 text-[var(--color-base-muted)]" strokeWidth={1.5} />
+    <div className="w-full h-full flex-1 flex flex-col items-center justify-center bg-[var(--color-base-bg)] px-6 gap-5 select-none relative overflow-hidden">
+      <div className="w-72 h-72 rounded-full bg-indigo-500/10 blur-[100px] absolute pointer-events-none animate-aurora-drift" />
+      <div className="w-16 h-16 rounded-full aurora-bg p-[1.5px] shadow-lg shadow-indigo-500/20 relative">
+        <div className="w-full h-full rounded-full bg-[var(--color-base-surface)] flex items-center justify-center">
+          <MessageSquare className="w-6 h-6 text-indigo-400" strokeWidth={1.6} />
+        </div>
       </div>
-      <div className="text-center space-y-2">
-        <h3 className="font-semibold text-xl text-[var(--color-base-text)] tracking-tight">{title}</h3>
-        <p className="text-sm text-[var(--color-base-muted)] max-w-[260px] leading-relaxed mx-auto">{description}</p>
+      <div className="text-center space-y-2 max-w-sm relative">
+        <p className="font-cursive text-5xl aurora-text leading-[0.8]">
+          WhopChat
+        </p>
+        <h3 className="font-display font-bold text-2xl text-[var(--color-base-text)] tracking-tight">
+          {title}
+        </h3>
+        <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
+          {description}
+        </p>
       </div>
     </div>
   );

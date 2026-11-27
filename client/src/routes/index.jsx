@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { authRoutesPaths, protectedRoutesPaths } from "./routes";
 import AppLayout from "@/layouts/app-layout";
 import RouteGuard from "./route-guard";
+import NotFound from "@/pages/not-found";
 
 const AppRoutes = () => {
   return (
@@ -22,6 +23,8 @@ const AppRoutes = () => {
           ))}
         </Route>
       </Route>
+
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 };

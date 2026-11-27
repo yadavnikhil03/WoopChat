@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { User } from '../models/User';
 import { isValidObjectId } from '../utils/database.util';
+import { escapeRegex, isSafeMediaUrl } from '../utils/sanitize.util';
 
 export class UserService {
   static async getProfile(userId: string) {
@@ -12,7 +13,11 @@ export class UserService {
 
   static async searchUsers(query: string, currentUserId: string) {
     if (!isValidObjectId(currentUserId)) throw new Error('Invalid user ID');
-    const regex = new RegExp(query, 'i');
+    const escaped = escapeRegex(typeof query === 'string' ? query : '');
+    if (!escaped) {
+      return UserService.getAllUsers(currentUserId);
+    }
+    const regex = new RegExp(escaped, 'i');
     const users = await User.find({
       _id: { $ne: new Types.ObjectId(currentUserId) },
       $or: [{ name: regex }, { email: regex }],
@@ -38,9 +43,20 @@ export class UserService {
     updates: { name?: string; bio?: string; status?: string; avatar?: string }
   ) {
     if (!isValidObjectId(userId)) throw new Error('Invalid user ID');
+    const safeUpdates: Record<string, string> = {};
+    if (typeof updates.name === 'string') safeUpdates['name'] = updates.name.trim();
+    if (typeof updates.bio === 'string') safeUpdates['bio'] = updates.bio.trim();
+    if (typeof updates.status === 'string') safeUpdates['status'] = updates.status.trim();
+    if (typeof updates.avatar === 'string') {
+      if (updates.avatar !== '' && !isSafeMediaUrl(updates.avatar, { maxLength: 2_000_000 })) {
+        throw new Error('Invalid or unsupported avatar URL');
+      }
+      safeUpdates['avatar'] = updates.avatar;
+    }
+
     const user = await User.findByIdAndUpdate(
       userId,
-      { $set: updates },
+      { $set: safeUpdates },
       { new: true, runValidators: true }
     ).select('-password -blockedUsers');
     if (!user) throw new Error('User not found');
@@ -50,6 +66,8 @@ export class UserService {
   static async blockUser(userId: string, targetId: string) {
     if (!isValidObjectId(userId) || !isValidObjectId(targetId)) throw new Error('Invalid user ID');
     if (userId === targetId) throw new Error('Cannot block yourself');
+    const target = await User.exists({ _id: new Types.ObjectId(targetId) });
+    if (!target) throw new Error('User not found');
     await User.findByIdAndUpdate(userId, {
       $addToSet: { blockedUsers: new Types.ObjectId(targetId) },
     });
