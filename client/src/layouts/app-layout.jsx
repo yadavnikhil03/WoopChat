@@ -14,7 +14,8 @@ const AppLayout = () => {
   return (
     <AppWrapper>
       <CallModal />
-      <div className="flex h-screen w-full bg-[var(--color-base-bg)] overflow-hidden text-[var(--color-base-text)]">
+      <div className="flex h-screen w-full bg-[var(--color-base-bg)] overflow-hidden text-[var(--color-base-text)] relative">
+        <div className="fixed inset-0 pointer-events-none grain-overlay opacity-[0.025] z-50" />
         <AsideBar />
         {isProfile ? (
           <div className="flex-1 h-full min-w-0 flex flex-col bg-[var(--color-base-bg)] overflow-y-auto">
@@ -24,7 +25,7 @@ const AppLayout = () => {
           <>
             <div
               className={cn(
-                "w-full lg:w-[400px] flex-shrink-0 border-r border-[var(--color-base-border)] bg-[var(--color-base-panel)]",
+                "w-full lg:w-[390px] flex-shrink-0 border-r border-[var(--color-base-border)] bg-[var(--color-base-panel)]/70",
                 chatId ? "hidden lg:flex lg:flex-col" : "flex flex-col"
               )}
             >
@@ -34,13 +35,13 @@ const AppLayout = () => {
               className={cn(
                 "flex-1 h-full min-w-0 flex flex-col bg-[var(--color-base-bg)] relative",
                 !chatId
-                  ? "hidden lg:flex items-center justify-center bg-[var(--color-base-panel)] border-l border-[var(--color-base-border)]"
+                  ? "hidden lg:flex items-center justify-center bg-[var(--color-base-bg)]"
                   : "flex"
               )}
             >
               {!chatId && (
-                <div className="text-[var(--color-base-muted)] text-sm font-medium">
-                  Select a chat to start messaging
+                <div className="font-mono-tech text-[11px] uppercase tracking-[0.2em] text-[var(--color-base-muted)]">
+                  Select a thread to begin
                 </div>
               )}
               <div className="relative z-10 flex flex-col h-full w-full">

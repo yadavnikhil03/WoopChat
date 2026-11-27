@@ -16,9 +16,9 @@ const PinnedBanner = ({ chat }) => {
       document.getElementById(`msg-${pinned._id}`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-amber-400", "bg-amber-500/15");
+      el.classList.add("ring-2", "ring-cyan-400", "bg-indigo-500/10");
       setTimeout(() => {
-        el.classList.remove("ring-2", "ring-amber-400", "bg-amber-500/15");
+        el.classList.remove("ring-2", "ring-cyan-400", "bg-indigo-500/10");
       }, 1800);
     } else {
       toast.info("Pinned message is further up in history");
@@ -51,16 +51,16 @@ const PinnedBanner = ({ chat }) => {
   return (
     <div
       onClick={handleJumpToMessage}
-      className="w-full px-4 py-2 bg-[var(--color-base-panel)]/95 border-b border-[var(--color-base-border)] backdrop-blur-md flex items-center justify-between gap-3 cursor-pointer hover:bg-[var(--color-base-hover)] transition-colors z-20 select-none animate-in slide-in-from-top-2"
+      className="w-full px-5 py-2.5 bg-[var(--color-base-panel)]/95 border-b border-[var(--color-base-border)] backdrop-blur-md flex items-center justify-between gap-3 cursor-pointer hover:bg-[var(--color-base-hover)] transition-colors z-20 select-none animate-in slide-in-from-top-2"
     >
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-        <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-          <Pin className="w-3.5 h-3.5 rotate-45 fill-amber-400/20" />
+        <div className="w-7 h-7 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0">
+          <Pin className="w-3.5 h-3.5 rotate-45" />
         </div>
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">
-              Pinned Message
+            <span className="text-[10px] font-mono-tech font-semibold text-cyan-400 uppercase tracking-wider">
+              Pinned
             </span>
             {pinned.sender?.name && (
               <span className="text-[11px] text-[var(--color-base-muted)] truncate">
@@ -78,10 +78,10 @@ const PinnedBanner = ({ chat }) => {
         <button
           type="button"
           onClick={handleUnpin}
-          className="p-1 rounded-md text-[var(--color-base-muted)] hover:text-red-400 hover:bg-black/20 transition-colors cursor-pointer"
+          className="p-1.5 rounded-full text-[var(--color-base-muted)] hover:text-red-400 hover:bg-[var(--color-base-bg)] transition-colors cursor-pointer"
           title="Unpin message"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

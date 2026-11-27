@@ -15,16 +15,12 @@ function App() {
     if (isAuth) return;
     isAuthStatus();
   }, [isAuthStatus, isAuth]);
-  
+
   if (isAuthStatusLoading && !user) {
     return (
-      <div
-        className="flex flex-col items-center
-       justify-center h-screen
-      "
-      >
-        <Logo imgClass="size-20" showText={false} />
-        <Spinner className="w-6 h-6" />
+      <div className="flex flex-col items-center justify-center h-screen gap-4 bg-[var(--color-base-bg)] text-[var(--color-base-text)]">
+        <Logo imgClass="w-16 h-16" showText={false} />
+        <Spinner className="w-5 h-5 text-[var(--color-accent-signal)]" />
       </div>
     );
   }

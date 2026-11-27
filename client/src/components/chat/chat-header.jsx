@@ -1,13 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Phone,
   Video,
   Search,
   MoreVertical,
-  Mic,
-  MicOff,
-  VideoOff,
-  PhoneOff,
   X,
   Info,
   Download,
@@ -15,12 +11,7 @@ import {
   BellOff,
   ShieldAlert,
   LogOut,
-  Sparkles,
   Users,
-  Maximize2,
-  Minimize2,
-  Minus,
-  ScreenShare,
   ArrowLeft,
   UserPlus,
   UserMinus,
@@ -35,6 +26,9 @@ import {
   Image as ImageIcon,
   Lock,
   Copy,
+  Timer,
+  Newspaper,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AvatarWithBadge from "../avatar-with-badge";
@@ -64,9 +58,8 @@ const ChatHeader = ({
   messages = [],
 }) => {
   const navigate = useNavigate();
-  const { socket, onlineUsers } = useSocket();
+  const { socket } = useSocket();
   const {
-    fetchChats,
     fetchSingleChat,
     fetchAllUsers,
     users,
@@ -77,6 +70,7 @@ const ChatHeader = ({
     updateGroupInfo,
     deleteGroup: deleteGroupAction,
     leaveGroup: leaveGroupAction,
+    generateDigest,
     singleChat,
   } = useChat();
   const { initiateCall } = useCall();
@@ -87,8 +81,15 @@ const ChatHeader = ({
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState("");
 
+  const [focusState, setFocusState] = useState(null);
+  const [focusRemaining, setFocusRemaining] = useState(0);
+
+  const [digestModalOpen, setDigestModalOpen] = useState(false);
+  const [digestPreview, setDigestPreview] = useState(null);
+  const [isLoadingDigest, setIsLoadingDigest] = useState(false);
+
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
-  const [infoTab, setInfoTab] = useState("overview"); 
+  const [infoTab, setInfoTab] = useState("overview");
   const [isMuted, setIsMuted] = useState(() => isChatMuted(chat?._id));
   const [isBlocked, setIsBlocked] = useState(false);
 
@@ -146,7 +147,92 @@ const ChatHeader = ({
 
   useEffect(() => {
     setIsMuted(isChatMuted(chat?._id));
+    setFocusState(null);
+    setFocusRemaining(0);
   }, [chat?._id]);
+
+  useEffect(() => {
+    if (!socket || !chat?._id) return;
+    const handleFocusState = (data) => {
+      if (data?.chatId !== chat._id) return;
+      if (data.active && data.endsAt) {
+        setFocusState(data);
+        toast.info(`${data.startedBy || "Teammate"} started a Deep Work Sprint`);
+      } else {
+        setFocusState(null);
+        setFocusRemaining(0);
+      }
+    };
+    socket.on("studio:focus-state", handleFocusState);
+    return () => socket.off("studio:focus-state", handleFocusState);
+  }, [socket, chat?._id]);
+
+  useEffect(() => {
+    if (!focusState?.active || !focusState?.endsAt) return;
+    const endMs = new Date(focusState.endsAt).getTime();
+    const update = () => {
+      const left = Math.max(0, Math.ceil((endMs - Date.now()) / 1000));
+      setFocusRemaining(left);
+      if (left <= 0) {
+        setFocusState(null);
+        toast.success("Focus Sprint complete!");
+      }
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [focusState]);
+
+  const toggleFocusSprint = () => {
+    if (!socket?.connected || !chat?._id || isAI) return;
+    if (focusState?.active) {
+      socket.emit("studio:focus-stop", { chatId: chat._id });
+    } else {
+      socket.emit("studio:focus-start", {
+        chatId: chat._id,
+        durationMinutes: 25,
+        label: "Deep Work Sprint",
+      });
+    }
+  };
+
+  const handleOpenDigest = async () => {
+    if (!chat?._id || isAI) return;
+    setDigestModalOpen(true);
+    setIsLoadingDigest(true);
+    const data = await generateDigest(chat._id, false);
+    setDigestPreview(data);
+    setIsLoadingDigest(false);
+  };
+
+  const handlePublishDigest = async () => {
+    if (!chat?._id || isAI) return;
+    setIsLoadingDigest(true);
+    await generateDigest(chat._id, true);
+    setIsLoadingDigest(false);
+    setDigestModalOpen(false);
+  };
+
+  const handleDownloadDigest = () => {
+    if (!digestPreview) return;
+    const md = `# ${digestPreview.title}\n\n_${digestPreview.subtitle}_\n\n## Highlights\n${digestPreview.highlights
+      .map((h) => `- ${h}`)
+      .join("\n")}\n`;
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `whopchat-digest-${name.replace(/\s+/g, "_")}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Digest exported as Markdown");
+  };
+
+  const formatFocusClock = (sec) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
 
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
@@ -163,9 +249,9 @@ const ChatHeader = ({
       const el = document.getElementById(`message-${targetMsg._id}`);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.classList.add("ring-2", "ring-emerald-400", "bg-emerald-500/20");
+        el.classList.add("ring-2", "ring-cyan-400", "bg-indigo-500/10");
         setTimeout(() => {
-          el.classList.remove("ring-2", "ring-emerald-400", "bg-emerald-500/20");
+          el.classList.remove("ring-2", "ring-cyan-400", "bg-indigo-500/10");
         }, 1600);
       }
     }
@@ -194,7 +280,6 @@ const ChatHeader = ({
   };
 
   const isCurrentUserAdmin = isGroup && isUserAdmin(currentUserId);
-  const isCurrentUserOwner = isGroup && isUserOwner(currentUserId);
 
   useEffect(() => {
     if (isInfoModalOpen && isGroup) {
@@ -202,7 +287,7 @@ const ChatHeader = ({
       setEditGroupName(chat?.groupName || name || "");
       setEditGroupDesc(chat?.groupDescription || "");
     }
-  }, [isInfoModalOpen, isGroup, chat?.groupName, chat?.groupDescription, name]);
+  }, [isInfoModalOpen, isGroup, chat?.groupName, chat?.groupDescription, name, fetchAllUsers]);
 
   useEffect(() => {
     if (!isGroup && !isAI && chat?._id) {
@@ -494,12 +579,93 @@ const ChatHeader = ({
 
   return (
     <>
+      {digestModalOpen && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in"
+          onClick={() => setDigestModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg rounded-3xl border border-[var(--color-base-border)] bg-[var(--color-base-surface)] shadow-2xl overflow-hidden animate-in zoom-in-95"
+          >
+            <div className="p-5 border-b border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Newspaper className="w-4 h-4 text-cyan-400" />
+                <span className="font-display font-bold text-sm">Editorial Thread Digest</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDigestModalOpen(false)}
+                className="p-1.5 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {isLoadingDigest ? (
+                <div className="py-12 text-center text-xs text-[var(--color-base-muted)]">
+                  Curating highlights...
+                </div>
+              ) : digestPreview ? (
+                <>
+                  <p className="font-cursive text-4xl aurora-text leading-[0.8]">
+                    Edition Recap
+                  </p>
+                  <h3 className="font-display font-extrabold text-xl tracking-tight">
+                    {digestPreview.title}
+                  </h3>
+                  <p className="font-editorial italic text-base text-[var(--color-base-muted)]">
+                    {digestPreview.subtitle}
+                  </p>
+                  <div className="space-y-2 pt-3 border-t border-[var(--color-base-border)]">
+                    {digestPreview.highlights?.map((h, i) => (
+                      <div
+                        key={i}
+                        className="p-3 rounded-2xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] text-xs leading-relaxed"
+                      >
+                        {h}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            <div className="p-4 border-t border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadDigest}
+                disabled={!digestPreview}
+                className="px-4 py-2 rounded-full border border-[var(--color-base-border)] bg-[var(--color-base-bg)] text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download .md</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePublishDigest}
+                disabled={isLoadingDigest}
+                className="px-5 py-2 rounded-full aurora-bg text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Publish to Chat</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isInfoModalOpen && (
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-lg bg-[var(--color-base-bg)] border border-[var(--color-base-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-lg bg-[var(--color-base-surface)] border border-[var(--color-base-border)] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-[var(--color-base-border)] bg-[var(--color-base-panel)] shrink-0">
-              <h3 className="font-semibold text-base text-[var(--color-base-text)] flex items-center gap-2">
-                {isGroup ? <Users className="w-4 h-4 text-emerald-500" /> : <Info className="w-4 h-4 text-emerald-500" />}
+              <h3 className="font-display font-bold text-base text-[var(--color-base-text)] flex items-center gap-2">
+                {isGroup ? (
+                  <Users className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <Info className="w-4 h-4 text-indigo-400" />
+                )}
                 <span>{isGroup ? "Group Details" : "Contact Information"}</span>
               </h3>
               <button
@@ -508,7 +674,7 @@ const ChatHeader = ({
                   setIsEditingGroup(false);
                   setIsAddMemberOpen(false);
                 }}
-                className="p-1.5 rounded-lg text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
+                className="p-1.5 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -519,9 +685,9 @@ const ChatHeader = ({
                 type="button"
                 onClick={() => setInfoTab("overview")}
                 className={cn(
-                  "py-2.5 px-4 text-xs font-semibold border-b-2 transition-colors cursor-pointer",
+                  "py-2.5 px-4 text-[11px] font-mono-tech uppercase tracking-wider border-b-2 transition-colors cursor-pointer",
                   infoTab === "overview"
-                    ? "border-emerald-500 text-emerald-400"
+                    ? "border-indigo-400 text-indigo-400 font-semibold"
                     : "border-transparent text-[var(--color-base-muted)] hover:text-[var(--color-base-text)]"
                 )}
               >
@@ -531,14 +697,14 @@ const ChatHeader = ({
                 type="button"
                 onClick={() => setInfoTab("media")}
                 className={cn(
-                  "py-2.5 px-4 text-xs font-semibold border-b-2 transition-colors cursor-pointer flex items-center gap-1.5",
+                  "py-2.5 px-4 text-[11px] font-mono-tech uppercase tracking-wider border-b-2 transition-colors cursor-pointer flex items-center gap-1.5",
                   infoTab === "media"
-                    ? "border-emerald-500 text-emerald-400"
+                    ? "border-indigo-400 text-indigo-400 font-semibold"
                     : "border-transparent text-[var(--color-base-muted)] hover:text-[var(--color-base-text)]"
                 )}
               >
-                <span>Media & Files</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--color-base-bg)] text-[var(--color-base-muted)] font-mono">
+                <span>Media &amp; Files</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-base-bg)] text-[var(--color-base-muted)]">
                   {sharedImages.length + sharedDocs.length}
                 </span>
               </button>
@@ -549,7 +715,7 @@ const ChatHeader = ({
                 <div className="space-y-5">
                   {sharedImages.length > 0 && (
                     <div>
-                      <span className="text-[11px] font-bold text-[var(--color-base-muted)] uppercase tracking-wider block mb-2">
+                      <span className="text-[10px] font-mono-tech font-bold text-[var(--color-base-muted)] uppercase tracking-wider block mb-2">
                         Shared Photos ({sharedImages.length})
                       </span>
                       <div className="grid grid-cols-3 gap-2">
@@ -580,8 +746,8 @@ const ChatHeader = ({
 
                   {sharedDocs.length > 0 && (
                     <div>
-                      <span className="text-[11px] font-bold text-[var(--color-base-muted)] uppercase tracking-wider block mb-2">
-                        Documents & Files ({sharedDocs.length})
+                      <span className="text-[10px] font-mono-tech font-bold text-[var(--color-base-muted)] uppercase tracking-wider block mb-2">
+                        Documents &amp; Files ({sharedDocs.length})
                       </span>
                       <div className="space-y-2">
                         {sharedDocs.map((m, idx) => {
@@ -591,10 +757,10 @@ const ChatHeader = ({
                           return (
                             <div
                               key={m._id || idx}
-                              className="p-2.5 rounded-xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] flex items-center justify-between gap-3"
+                              className="p-2.5 rounded-2xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] flex items-center justify-between gap-3"
                             >
                               <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0">
                                   <FileText className="w-4 h-4" />
                                 </div>
                                 <span className="text-xs font-medium text-[var(--color-base-text)] truncate">
@@ -609,7 +775,7 @@ const ChatHeader = ({
                                   a.download = docName || "document";
                                   a.click();
                                 }}
-                                className="p-1.5 rounded-lg text-[var(--color-base-muted)] hover:text-emerald-400 hover:bg-[var(--color-base-bg)] transition-colors cursor-pointer shrink-0"
+                                className="p-1.5 rounded-full text-[var(--color-base-muted)] hover:text-indigo-400 hover:bg-[var(--color-base-bg)] transition-colors cursor-pointer shrink-0"
                                 title="Download document"
                               >
                                 <Download className="w-3.5 h-3.5" />
@@ -623,8 +789,8 @@ const ChatHeader = ({
 
                   {sharedImages.length === 0 && sharedDocs.length === 0 && (
                     <div className="py-12 flex flex-col items-center justify-center text-center">
-                      <div className="w-12 h-12 rounded-2xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] flex items-center justify-center text-[var(--color-base-muted)] mb-3">
-                        <ImageIcon className="w-6 h-6" strokeWidth={1.5} />
+                      <div className="w-12 h-12 rounded-full bg-[var(--color-base-panel)] border border-[var(--color-base-border)] flex items-center justify-center text-[var(--color-base-muted)] mb-3">
+                        <ImageIcon className="w-5 h-5" strokeWidth={1.5} />
                       </div>
                       <p className="text-xs font-medium text-[var(--color-base-text)]">
                         No media or documents shared yet
@@ -640,323 +806,323 @@ const ChatHeader = ({
                   <div className="flex flex-col items-center text-center">
                     <AvatarWithBadge name={name} src={avatar} isGroup={isGroup} className="w-20 h-20 mb-3" />
 
-                {isEditingGroup ? (
-                  <div className="w-full space-y-3 mt-1">
-                    <div>
-                      <label className="text-[11px] font-bold text-[var(--color-base-muted)] uppercase tracking-wider block text-left mb-1">
-                        Group Name
-                      </label>
-                      <input
-                        type="text"
-                        value={editGroupName}
-                        onChange={(e) => setEditGroupName(e.target.value)}
-                        className="w-full px-3 py-2 bg-[var(--color-base-panel)] border border-[var(--color-base-border)] rounded-lg text-sm text-[var(--color-base-text)] focus:outline-none focus:border-emerald-500"
-                        placeholder="Group name"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-[var(--color-base-muted)] uppercase tracking-wider block text-left mb-1">
-                        Description
-                      </label>
-                      <textarea
-                        value={editGroupDesc}
-                        onChange={(e) => setEditGroupDesc(e.target.value)}
-                        rows={2}
-                        className="w-full px-3 py-2 bg-[var(--color-base-panel)] border border-[var(--color-base-border)] rounded-lg text-sm text-[var(--color-base-text)] focus:outline-none focus:border-emerald-500 resize-none"
-                        placeholder="Group description (optional)"
-                      />
-                    </div>
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
-                        onClick={() => setIsEditingGroup(false)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)]"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveGroupInfo}
-                        disabled={isSubmittingAdmin}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-600 text-white flex items-center gap-1.5 disabled:opacity-50"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Save Changes</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-lg font-bold text-[var(--color-base-text)]">{name}</h4>
-                      {isCurrentUserAdmin && (
-                        <button
-                          onClick={() => setIsEditingGroup(true)}
-                          className="p-1 rounded text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-panel)] transition-colors"
-                          title="Edit group details"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-xs text-[var(--color-base-muted)] mt-0.5">
-                      {isAI ? "Automated Intelligence Assistant" : isGroup ? `${chat?.participants?.length || 0} participants` : isOnline ? "Active now" : (subheading || "Offline")}
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {!isGroup && !isAI && infoTab === "overview" && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-4 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsInfoModalOpen(false);
-                        startAudioCall();
-                      }}
-                      className="p-2.5 rounded-xl bg-[var(--color-base-panel)] hover:bg-[var(--color-base-hover)] border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] hover:text-emerald-400 transition-colors cursor-pointer"
-                    >
-                      <Phone className="w-4 h-4 text-emerald-400" />
-                      <span className="text-[10.5px] font-medium">Audio</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsInfoModalOpen(false);
-                        startVideoCall();
-                      }}
-                      className="p-2.5 rounded-xl bg-[var(--color-base-panel)] hover:bg-[var(--color-base-hover)] border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] hover:text-emerald-400 transition-colors cursor-pointer"
-                    >
-                      <Video className="w-4 h-4 text-emerald-400" />
-                      <span className="text-[10.5px] font-medium">Video</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextMuted = toggleChatMute(chat?._id);
-                        setIsMuted(nextMuted);
-                        toast.info(nextMuted ? "Notifications muted for this chat" : "Notifications unmuted");
-                      }}
-                      className="p-2.5 rounded-xl bg-[var(--color-base-panel)] hover:bg-[var(--color-base-hover)] border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] hover:text-amber-400 transition-colors cursor-pointer"
-                    >
-                      <BellOff className={cn("w-4 h-4", isMuted ? "text-amber-400" : "text-[var(--color-base-muted)]")} />
-                      <span className="text-[10.5px] font-medium">{isMuted ? "Muted" : "Mute"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={exportChat}
-                      className="p-2.5 rounded-xl bg-[var(--color-base-panel)] hover:bg-[var(--color-base-hover)] border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] hover:text-blue-400 transition-colors cursor-pointer"
-                    >
-                      <Download className="w-4 h-4 text-blue-400" />
-                      <span className="text-[10.5px] font-medium">Export</span>
-                    </button>
-                  </div>
-
-                  {otherUser?.email && (
-                    <div className="bg-[var(--color-base-panel)] p-3 rounded-xl border border-[var(--color-base-border)] flex items-center justify-between">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-                          <Mail className="w-4 h-4" />
+                    {isEditingGroup ? (
+                      <div className="w-full space-y-3 mt-1">
+                        <div>
+                          <label className="text-[10px] font-mono-tech font-bold text-[var(--color-base-muted)] uppercase tracking-wider block text-left mb-1">
+                            Group Name
+                          </label>
+                          <input
+                            type="text"
+                            value={editGroupName}
+                            onChange={(e) => setEditGroupName(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-[var(--color-base-panel)] border border-[var(--color-base-border)] rounded-xl text-sm text-[var(--color-base-text)] focus:outline-none focus:border-indigo-400"
+                            placeholder="Group name"
+                          />
                         </div>
-                        <div className="min-w-0">
-                          <span className="text-[11px] font-bold text-[var(--color-base-muted)] uppercase tracking-wider block">
-                            Email Address
-                          </span>
-                          <span className="text-xs text-[var(--color-base-text)] font-medium truncate block">
-                            {otherUser.email}
-                          </span>
+                        <div>
+                          <label className="text-[10px] font-mono-tech font-bold text-[var(--color-base-muted)] uppercase tracking-wider block text-left mb-1">
+                            Description
+                          </label>
+                          <textarea
+                            value={editGroupDesc}
+                            onChange={(e) => setEditGroupDesc(e.target.value)}
+                            rows={2}
+                            className="w-full px-3.5 py-2 bg-[var(--color-base-panel)] border border-[var(--color-base-border)] rounded-xl text-sm text-[var(--color-base-text)] focus:outline-none focus:border-indigo-400 resize-none"
+                            placeholder="Group description (optional)"
+                          />
+                        </div>
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            onClick={() => setIsEditingGroup(false)}
+                            className="px-3.5 py-1.5 rounded-full text-xs font-medium text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveGroupInfo}
+                            disabled={isSubmittingAdmin}
+                            className="px-4 py-1.5 rounded-full text-xs font-semibold aurora-bg hover:opacity-90 text-white flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Save Changes</span>
+                          </button>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(otherUser.email);
-                          toast.success("Email copied to clipboard");
-                        }}
-                        className="p-1.5 rounded-lg text-[var(--color-base-muted)] hover:text-emerald-400 hover:bg-[var(--color-base-bg)] transition-colors cursor-pointer"
-                        title="Copy email"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="bg-[var(--color-base-panel)] p-3 rounded-xl border border-[var(--color-base-border)] flex items-center gap-2.5 text-xs text-[var(--color-base-muted)]">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-                      <Lock className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="font-semibold text-emerald-400 block text-[11.5px]">End-to-End Encrypted</span>
-                      <span className="text-[10.5px]">Messages and calls are secured with end-to-end encryption.</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {isGroup && !isEditingGroup && chat?.groupDescription && (
-                <div className="bg-[var(--color-base-panel)] p-3 rounded-xl border border-[var(--color-base-border)]">
-                  <span className="text-[11px] font-bold text-[var(--color-base-muted)] uppercase tracking-wider block mb-1">
-                    Description
-                  </span>
-                  <p className="text-sm text-[var(--color-base-text)]">{chat.groupDescription}</p>
-                </div>
-              )}
-
-              {isGroup && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-[var(--color-base-muted)] uppercase tracking-wider">
-                      Participants ({chat?.participants?.length || 0})
-                    </span>
-                    {isCurrentUserAdmin && (
-                      <button
-                        onClick={() => setIsAddMemberOpen(!isAddMemberOpen)}
-                        className={`text-xs px-2.5 py-1 rounded-lg border font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
-                          isAddMemberOpen
-                            ? "bg-neutral-800 text-white border-neutral-700"
-                            : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                        }`}
-                      >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        <span>{isAddMemberOpen ? "Done" : "Add Member"}</span>
-                      </button>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-display text-lg font-bold text-[var(--color-base-text)]">{name}</h4>
+                          {isCurrentUserAdmin && (
+                            <button
+                              onClick={() => setIsEditingGroup(true)}
+                              className="p-1 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-panel)] transition-colors cursor-pointer"
+                              title="Edit group details"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[11px] font-mono-tech text-[var(--color-base-muted)] mt-0.5">
+                          {isAI ? "Automated Intelligence Assistant" : isGroup ? `${chat?.participants?.length || 0} participants` : isOnline ? "Active now" : (subheading || "Offline")}
+                        </p>
+                      </>
                     )}
                   </div>
 
-                  {isAddMemberOpen && (
-                    <div className="p-3 bg-[var(--color-base-panel)] border border-emerald-500/30 rounded-xl space-y-3 animate-in slide-in-from-top-2 duration-150">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[var(--color-base-text)] flex items-center gap-1.5">
-                          <UserPlus className="w-3.5 h-3.5 text-emerald-500" />
-                          Add Someone to Group
-                        </span>
-                        <span className="text-[11px] text-[var(--color-base-muted)]">
-                          {availableUsersToAdd.length} available
-                        </span>
+                  {!isGroup && !isAI && infoTab === "overview" && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-4 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsInfoModalOpen(false);
+                            handleStartAudioCall();
+                          }}
+                          className="p-3 rounded-2xl bg-[var(--color-base-panel)] hover:border-indigo-400 border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] transition-colors cursor-pointer"
+                        >
+                          <Phone className="w-4 h-4 text-indigo-400" />
+                          <span className="text-[10.5px] font-medium">Audio</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsInfoModalOpen(false);
+                            handleStartVideoCall();
+                          }}
+                          className="p-3 rounded-2xl bg-[var(--color-base-panel)] hover:border-indigo-400 border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] transition-colors cursor-pointer"
+                        >
+                          <Video className="w-4 h-4 text-indigo-400" />
+                          <span className="text-[10.5px] font-medium">Video</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextMuted = toggleChatMute(chat?._id);
+                            setIsMuted(nextMuted);
+                            toast.info(nextMuted ? "Notifications muted for this chat" : "Notifications unmuted");
+                          }}
+                          className="p-3 rounded-2xl bg-[var(--color-base-panel)] hover:border-indigo-400 border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] transition-colors cursor-pointer"
+                        >
+                          <BellOff className={cn("w-4 h-4", isMuted ? "text-amber-400" : "text-[var(--color-base-muted)]")} />
+                          <span className="text-[10.5px] font-medium">{isMuted ? "Muted" : "Mute"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={exportChat}
+                          className="p-3 rounded-2xl bg-[var(--color-base-panel)] hover:border-indigo-400 border border-[var(--color-base-border)] flex flex-col items-center gap-1.5 text-xs text-[var(--color-base-text)] transition-colors cursor-pointer"
+                        >
+                          <Download className="w-4 h-4 text-cyan-400" />
+                          <span className="text-[10.5px] font-medium">Export</span>
+                        </button>
                       </div>
 
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-base-muted)]" />
-                        <input
-                          type="text"
-                          value={addMemberSearch}
-                          onChange={(e) => setAddMemberSearch(e.target.value)}
-                          placeholder="Search users to add..."
-                          className="w-full pl-8 pr-3 py-1.5 bg-[var(--color-base-bg)] border border-[var(--color-base-border)] rounded-lg text-xs text-[var(--color-base-text)] placeholder:text-[var(--color-base-muted)] focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-
-                      <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
-                        {filteredAvailableUsers.length === 0 ? (
-                          <p className="text-xs text-center py-3 text-[var(--color-base-muted)]">
-                            {availableUsersToAdd.length === 0
-                              ? "All registered users are already in this group."
-                              : "No users match your search."}
-                          </p>
-                        ) : (
-                          filteredAvailableUsers.map((u) => (
-                            <div
-                              key={u._id}
-                              className="flex items-center justify-between p-2 rounded-lg bg-[var(--color-base-bg)] border border-[var(--color-base-border)] hover:border-neutral-700 transition-colors"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <AvatarWithBadge name={u.name || "U"} src={u.avatar} className="w-6 h-6 shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-xs font-medium text-[var(--color-base-text)] truncate">{u.name}</p>
-                                  <p className="text-[10px] text-[var(--color-base-muted)] truncate">{u.email}</p>
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => handleAddMember(u)}
-                                disabled={isSubmittingAdmin}
-                                className="px-2.5 py-1 rounded-md bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-semibold flex items-center gap-1 transition-transform active:scale-95 disabled:opacity-50 shrink-0 cursor-pointer"
-                              >
-                                <UserPlus className="w-3 h-3" />
-                                <span>Add</span>
-                              </button>
+                      {otherUser?.email && (
+                        <div className="bg-[var(--color-base-panel)] p-3.5 rounded-2xl border border-[var(--color-base-border)] flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0">
+                              <Mail className="w-4 h-4" />
                             </div>
-                          ))
-                        )}
+                            <div className="min-w-0">
+                              <span className="text-[10px] font-mono-tech font-bold text-[var(--color-base-muted)] uppercase tracking-wider block">
+                                Email Address
+                              </span>
+                              <span className="text-xs text-[var(--color-base-text)] font-medium truncate block">
+                                {otherUser.email}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(otherUser.email);
+                              toast.success("Email copied to clipboard");
+                            }}
+                            className="p-1.5 rounded-full text-[var(--color-base-muted)] hover:text-indigo-400 hover:bg-[var(--color-base-bg)] transition-colors cursor-pointer"
+                            title="Copy email"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="bg-[var(--color-base-panel)] p-3.5 rounded-2xl border border-[var(--color-base-border)] flex items-center gap-3 text-xs text-[var(--color-base-muted)]">
+                        <div className="w-8 h-8 rounded-full bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0">
+                          <Lock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="font-semibold text-indigo-400 block text-xs">End-to-End Encrypted</span>
+                          <span className="text-[11px]">Messages and calls are secured with end-to-end encryption.</span>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-                    {chat?.participants?.map((p) => {
-                      const isTargetAdmin = isUserAdmin(p._id);
-                      const isTargetOwner = isUserOwner(p._id);
-                      const isSelf = p._id === currentUserId;
-                      const canManageTarget = isCurrentUserAdmin && !isSelf && !isTargetOwner;
+                  {isGroup && !isEditingGroup && chat?.groupDescription && (
+                    <div className="bg-[var(--color-base-panel)] p-3.5 rounded-2xl border border-[var(--color-base-border)]">
+                      <span className="text-[10px] font-mono-tech font-bold text-[var(--color-base-muted)] uppercase tracking-wider block mb-1">
+                        Description
+                      </span>
+                      <p className="text-sm text-[var(--color-base-text)]">{chat.groupDescription}</p>
+                    </div>
+                  )}
 
-                      return (
-                        <div
-                          key={p._id || p}
-                          className="flex items-center justify-between p-2.5 rounded-xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] hover:border-neutral-700 transition-all gap-2"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <AvatarWithBadge name={p.name || "U"} src={p.avatar} isOnline={isUserOnline(p._id)} className="w-8 h-8 shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-sm font-medium text-[var(--color-base-text)] truncate">
-                                  {p.name}
-                                </span>
-                                {isSelf && (
-                                  <span className="text-[11px] text-[var(--color-base-muted)] font-normal">
-                                    (You)
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-[var(--color-base-muted)] truncate">
-                                {p.email || (isUserOnline(p._id) ? "Active now" : "Offline")}
-                              </p>
-                            </div>
+                  {isGroup && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono-tech font-bold text-[var(--color-base-muted)] uppercase tracking-wider">
+                          Participants ({chat?.participants?.length || 0})
+                        </span>
+                        {isCurrentUserAdmin && (
+                          <button
+                            onClick={() => setIsAddMemberOpen(!isAddMemberOpen)}
+                            className={`text-xs px-3 py-1 rounded-full border font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                              isAddMemberOpen
+                                ? "aurora-bg text-white border-transparent"
+                                : "bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+                            }`}
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                            <span>{isAddMemberOpen ? "Done" : "Add Member"}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {isAddMemberOpen && (
+                        <div className="p-3.5 bg-[var(--color-base-panel)] border border-indigo-500/30 rounded-2xl space-y-3 animate-in slide-in-from-top-2 duration-150">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-[var(--color-base-text)] flex items-center gap-1.5">
+                              <UserPlus className="w-3.5 h-3.5 text-indigo-400" />
+                              Add Someone to Group
+                            </span>
+                            <span className="text-[11px] font-mono-tech text-[var(--color-base-muted)]">
+                              {availableUsersToAdd.length} available
+                            </span>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {isTargetOwner ? (
-                              <span className="text-[10px] px-2 py-0.5 bg-amber-500/15 text-amber-400 rounded-full font-semibold border border-amber-500/30 flex items-center gap-1">
-                                <Crown className="w-3 h-3" />
-                                Owner
-                              </span>
-                            ) : isTargetAdmin ? (
-                              <span className="text-[10px] px-2 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-semibold border border-emerald-500/30 flex items-center gap-1">
-                                <Shield className="w-3 h-3" />
-                                Admin
-                              </span>
-                            ) : null}
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-base-muted)]" />
+                            <input
+                              type="text"
+                              value={addMemberSearch}
+                              onChange={(e) => setAddMemberSearch(e.target.value)}
+                              placeholder="Search users to add..."
+                              className="w-full pl-9 pr-3 py-1.5 bg-[var(--color-base-bg)] border border-[var(--color-base-border)] rounded-full text-xs text-[var(--color-base-text)] placeholder:text-[var(--color-base-muted)] focus:outline-none focus:border-indigo-400"
+                            />
+                          </div>
 
-                            {canManageTarget && (
-                              <div className="flex items-center gap-1 ml-1">
-                                <button
-                                  onClick={() => handleToggleAdmin(p, !isTargetAdmin)}
-                                  disabled={isSubmittingAdmin}
-                                  className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-                                    isTargetAdmin
-                                      ? "text-neutral-400 hover:text-amber-400 border-neutral-700 hover:bg-neutral-800"
-                                      : "text-neutral-400 hover:text-emerald-400 border-neutral-700 hover:bg-neutral-800"
-                                  }`}
-                                  title={isTargetAdmin ? "Dismiss as Admin" : "Make Group Admin"}
+                          <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                            {filteredAvailableUsers.length === 0 ? (
+                              <p className="text-xs text-center py-3 text-[var(--color-base-muted)]">
+                                {availableUsersToAdd.length === 0
+                                  ? "All registered users are already in this group."
+                                  : "No users match your search."}
+                              </p>
+                            ) : (
+                              filteredAvailableUsers.map((u) => (
+                                <div
+                                  key={u._id}
+                                  className="flex items-center justify-between p-2 rounded-xl bg-[var(--color-base-bg)] border border-[var(--color-base-border)] transition-colors"
                                 >
-                                  <Shield className="w-3.5 h-3.5" />
-                                </button>
-
-                                <button
-                                  onClick={() => handleKickMember(p)}
-                                  disabled={isSubmittingAdmin}
-                                  className="px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
-                                  title="Kick member from group"
-                                >
-                                  <UserMinus className="w-3.5 h-3.5" />
-                                  <span className="hidden sm:inline">Kick</span>
-                                </button>
-                              </div>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <AvatarWithBadge name={u.name || "U"} src={u.avatar} className="w-6 h-6 shrink-0" />
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-[var(--color-base-text)] truncate">{u.name}</p>
+                                      <p className="text-[10px] text-[var(--color-base-muted)] truncate">{u.email}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => handleAddMember(u)}
+                                    disabled={isSubmittingAdmin}
+                                    className="px-3 py-1 rounded-full aurora-bg hover:opacity-90 text-white text-[11px] font-semibold flex items-center gap-1 transition-transform active:scale-95 disabled:opacity-50 shrink-0 cursor-pointer"
+                                  >
+                                    <UserPlus className="w-3 h-3" />
+                                    <span>Add</span>
+                                  </button>
+                                </div>
+                              ))
                             )}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+                      )}
+
+                      <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                        {chat?.participants?.map((p) => {
+                          const isTargetAdmin = isUserAdmin(p._id);
+                          const isTargetOwner = isUserOwner(p._id);
+                          const isSelf = p._id === currentUserId;
+                          const canManageTarget = isCurrentUserAdmin && !isSelf && !isTargetOwner;
+
+                          return (
+                            <div
+                              key={p._id || p}
+                              className="flex items-center justify-between p-2.5 rounded-2xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] transition-all gap-2"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <AvatarWithBadge name={p.name || "U"} src={p.avatar} isOnline={isUserOnline(p._id)} className="w-8 h-8 shrink-0" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm font-medium text-[var(--color-base-text)] truncate">
+                                      {p.name}
+                                    </span>
+                                    {isSelf && (
+                                      <span className="text-[11px] text-[var(--color-base-muted)] font-normal">
+                                        (You)
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-[var(--color-base-muted)] truncate">
+                                    {p.email || (isUserOnline(p._id) ? "Active now" : "Offline")}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isTargetOwner ? (
+                                  <span className="text-[10px] px-2.5 py-0.5 bg-amber-500/15 text-amber-400 rounded-full font-semibold border border-amber-500/30 flex items-center gap-1">
+                                    <Crown className="w-3 h-3" />
+                                    Owner
+                                  </span>
+                                ) : isTargetAdmin ? (
+                                  <span className="text-[10px] px-2.5 py-0.5 bg-indigo-500/15 text-indigo-400 rounded-full font-semibold border border-indigo-500/30 flex items-center gap-1">
+                                    <Shield className="w-3 h-3" />
+                                    Admin
+                                  </span>
+                                ) : null}
+
+                                {canManageTarget && (
+                                  <div className="flex items-center gap-1 ml-1">
+                                    <button
+                                      onClick={() => handleToggleAdmin(p, !isTargetAdmin)}
+                                      disabled={isSubmittingAdmin}
+                                      className={`p-1.5 rounded-full border border-[var(--color-base-border)] text-xs transition-colors cursor-pointer ${
+                                        isTargetAdmin
+                                          ? "text-[var(--color-base-muted)] hover:text-amber-400 hover:bg-[var(--color-base-hover)]"
+                                          : "text-[var(--color-base-muted)] hover:text-indigo-400 hover:bg-[var(--color-base-hover)]"
+                                      }`}
+                                      title={isTargetAdmin ? "Dismiss as Admin" : "Make Group Admin"}
+                                    >
+                                      <Shield className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleKickMember(p)}
+                                      disabled={isSubmittingAdmin}
+                                      className="px-2.5 py-1 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                                      title="Kick member from group"
+                                    >
+                                      <UserMinus className="w-3.5 h-3.5" />
+                                      <span className="hidden sm:inline">Kick</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -965,7 +1131,7 @@ const ChatHeader = ({
               <div className="p-4 border-t border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex items-center justify-between gap-3 shrink-0">
                 <button
                   onClick={handleLeaveGroup}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-neutral-400 hover:text-red-400 hover:bg-red-500/10 border border-neutral-700 hover:border-red-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 rounded-full text-xs font-semibold text-[var(--color-base-muted)] hover:text-red-400 hover:bg-red-500/10 border border-[var(--color-base-border)] hover:border-red-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Leave Group</span>
@@ -974,7 +1140,7 @@ const ChatHeader = ({
                 {isCurrentUserAdmin && (
                   <button
                     onClick={handleDeleteGroup}
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 rounded-full text-xs font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Delete Group</span>
@@ -993,7 +1159,7 @@ const ChatHeader = ({
                       onConfirm: clearChat,
                     });
                   }}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-neutral-400 hover:text-amber-400 hover:bg-amber-500/10 border border-neutral-700 hover:border-amber-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 rounded-full text-xs font-semibold text-[var(--color-base-muted)] hover:text-amber-400 hover:bg-amber-500/10 border border-[var(--color-base-border)] hover:border-amber-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Clear Chat</span>
@@ -1001,9 +1167,9 @@ const ChatHeader = ({
                 <button
                   onClick={toggleBlockContact}
                   className={cn(
-                    "px-3.5 py-2 rounded-xl text-xs font-semibold border transition-colors flex items-center gap-1.5 cursor-pointer",
+                    "px-4 py-2 rounded-full text-xs font-semibold border transition-colors flex items-center gap-1.5 cursor-pointer",
                     isBlocked
-                      ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30"
+                      ? "text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30"
                       : "text-red-400 bg-red-500/10 hover:bg-red-500/20 border-red-500/30"
                   )}
                 >
@@ -1016,12 +1182,12 @@ const ChatHeader = ({
         </div>
       )}
 
-      <div className="w-full flex flex-col bg-[var(--color-base-bg)] border-b border-[var(--color-base-border)] z-20">
-        <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3">
+      <div className="w-full flex flex-col bg-[var(--color-base-surface)] border-b border-[var(--color-base-border)] z-20">
+        <div className="w-full flex items-center justify-between px-4 sm:px-6 h-[64px]">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => navigate("/chat")}
-              className="lg:hidden p-1.5 -ml-1 rounded-md text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer shrink-0"
+              className="lg:hidden p-1.5 -ml-1 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer shrink-0"
               title="Back to chats"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -1035,28 +1201,28 @@ const ChatHeader = ({
               <AvatarWithBadge name={name} src={avatar} isGroup={isGroup} isOnline={isOnline} className="w-9 h-9 shrink-0" />
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <h5 className="text-[15px] font-medium text-[var(--color-base-text)] leading-tight truncate">{name}</h5>
+                  <h5 className="font-display text-[15px] font-bold text-[var(--color-base-text)] leading-tight truncate">{name}</h5>
                   {isAI && (
-                    <span className="text-[9.5px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 shrink-0">
+                    <span className="text-[9px] font-mono-tech uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 shrink-0">
                       AI
                     </span>
                   )}
                 </div>
 
                 {isTyping ? (
-                  <span className="text-[12px] text-emerald-500 font-medium truncate flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span className="text-[11px] font-mono-tech text-cyan-400 font-medium truncate flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
                     {isGroup && typingUser ? `${typingUser} is typing...` : "typing..."}
                   </span>
                 ) : (
                   <div className="flex items-center gap-1.5 min-w-0">
                     {isOnline && !isGroup ? (
                       <>
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                        <span className="text-[12px] text-emerald-400 font-medium truncate">online</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                        <span className="text-[11px] font-mono-tech text-cyan-400 font-medium truncate">online</span>
                       </>
                     ) : (
-                      <span className="text-[12px] text-[var(--color-base-muted)] truncate">
+                      <span className="text-[11px] text-[var(--color-base-muted)] truncate">
                         {subheading || "click for info"}
                       </span>
                     )}
@@ -1070,9 +1236,33 @@ const ChatHeader = ({
             {!isAI && (
               <>
                 <button
+                  type="button"
+                  onClick={toggleFocusSprint}
+                  title={focusState?.active ? "Stop Focus Sprint" : "Start 25m Focus Sprint"}
+                  className={cn(
+                    "hidden sm:flex items-center gap-1.5 px-3 h-8 rounded-full text-[11px] font-mono-tech transition-all cursor-pointer mr-1",
+                    focusState?.active
+                      ? "aurora-bg text-white shadow-md shadow-indigo-500/25 animate-pulse"
+                      : "border border-[var(--color-base-border)] bg-[var(--color-base-panel)] text-[var(--color-base-muted)] hover:text-cyan-400 hover:border-cyan-400/50"
+                  )}
+                >
+                  <Timer className="w-3.5 h-3.5" />
+                  <span>{focusState?.active ? formatFocusClock(focusRemaining) : "Focus"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenDigest}
+                  title="Generate Editorial Thread Digest"
+                  className="hover:bg-[var(--color-base-hover)] hover:text-cyan-400 rounded-full h-9 w-9 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <Newspaper className="w-4 h-4" />
+                </button>
+
+                <button
                   onClick={handleStartAudioCall}
                   title="Start Voice Call"
-                  className="hover:bg-[var(--color-base-hover)] hover:text-[var(--color-base-text)] rounded-md h-9 w-9 flex items-center justify-center transition-colors cursor-pointer"
+                  className="hover:bg-[var(--color-base-hover)] hover:text-indigo-400 rounded-full h-9 w-9 flex items-center justify-center transition-colors cursor-pointer"
                 >
                   <Phone className="w-4 h-4" />
                 </button>
@@ -1080,7 +1270,7 @@ const ChatHeader = ({
                 <button
                   onClick={handleStartVideoCall}
                   title="Start Video Call"
-                  className="hover:bg-[var(--color-base-hover)] hover:text-[var(--color-base-text)] rounded-md h-9 w-9 flex items-center justify-center transition-colors cursor-pointer"
+                  className="hover:bg-[var(--color-base-hover)] hover:text-indigo-400 rounded-full h-9 w-9 flex items-center justify-center transition-colors cursor-pointer"
                 >
                   <Video className="w-4 h-4" />
                 </button>
@@ -1092,9 +1282,9 @@ const ChatHeader = ({
                 if (setIsSearchOpen) setIsSearchOpen(!isSearchOpen);
               }}
               title="Search in conversation"
-              className={`rounded-md h-9 w-9 flex items-center justify-center transition-colors cursor-pointer ${
+              className={`rounded-full h-9 w-9 flex items-center justify-center transition-colors cursor-pointer ${
                 isSearchOpen
-                  ? "bg-[var(--color-base-hover)] text-[var(--color-base-primary)]"
+                  ? "bg-indigo-500/15 text-indigo-400"
                   : "hover:bg-[var(--color-base-hover)] hover:text-[var(--color-base-text)]"
               }`}
             >
@@ -1105,7 +1295,7 @@ const ChatHeader = ({
               <DropdownMenuTrigger asChild>
                 <button
                   title="More actions"
-                  className="hover:bg-[var(--color-base-hover)] hover:text-[var(--color-base-text)] rounded-md h-9 w-9 flex items-center justify-center transition-colors cursor-pointer outline-none"
+                  className="hover:bg-[var(--color-base-hover)] hover:text-[var(--color-base-text)] rounded-full h-9 w-9 flex items-center justify-center transition-colors cursor-pointer outline-none"
                 >
                   <MoreVertical className="w-4 h-4" />
                 </button>
@@ -1119,6 +1309,16 @@ const ChatHeader = ({
                   <Info className="w-4 h-4" />
                   <span>{isGroup ? "Group Info" : "Contact Info"}</span>
                 </DropdownMenuItem>
+
+                {!isAI && (
+                  <DropdownMenuItem
+                    onClick={handleOpenDigest}
+                    className="flex items-center gap-2 cursor-pointer text-sm"
+                  >
+                    <Newspaper className="w-4 h-4" />
+                    <span>Edition Digest</span>
+                  </DropdownMenuItem>
+                )}
 
                 <DropdownMenuItem
                   onClick={exportChat}
@@ -1144,7 +1344,7 @@ const ChatHeader = ({
 
                 <DropdownMenuItem
                   onClick={clearChat}
-                  className="flex items-center gap-2 cursor-pointer text-sm text-amber-500 hover:text-amber-600 focus:text-amber-600"
+                  className="flex items-center gap-2 cursor-pointer text-sm text-amber-400 hover:text-amber-500 focus:text-amber-500"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>Clear Messages</span>
@@ -1155,8 +1355,8 @@ const ChatHeader = ({
                     onClick={toggleBlockContact}
                     className={`flex items-center gap-2 cursor-pointer text-sm ${
                       isBlocked
-                        ? "text-emerald-400 hover:text-emerald-300 focus:text-emerald-300"
-                        : "text-red-500 hover:text-red-600 focus:text-red-600"
+                        ? "text-indigo-400"
+                        : "text-red-400 hover:text-red-500 focus:text-red-500"
                     }`}
                   >
                     <ShieldAlert className="w-4 h-4" />
@@ -1168,7 +1368,7 @@ const ChatHeader = ({
                   <>
                     <DropdownMenuItem
                       onClick={handleLeaveGroup}
-                      className="flex items-center gap-2 cursor-pointer text-sm text-red-500 hover:text-red-600 focus:text-red-600"
+                      className="flex items-center gap-2 cursor-pointer text-sm text-red-400 hover:text-red-500 focus:text-red-500"
                     >
                       <LogOut className="w-4 h-4" />
                       <span>Leave Group</span>
@@ -1177,7 +1377,7 @@ const ChatHeader = ({
                     {isCurrentUserAdmin && (
                       <DropdownMenuItem
                         onClick={handleDeleteGroup}
-                        className="flex items-center gap-2 cursor-pointer text-sm text-red-500 hover:text-red-600 focus:text-red-600"
+                        className="flex items-center gap-2 cursor-pointer text-sm text-red-400 hover:text-red-500 focus:text-red-500"
                       >
                         <Trash2 className="w-4 h-4" />
                         <span>Delete Group</span>
@@ -1191,7 +1391,7 @@ const ChatHeader = ({
         </div>
 
         {isSearchOpen && (
-          <div className="px-6 py-2 bg-[var(--color-base-panel)] border-t border-[var(--color-base-border)] flex items-center gap-3 animate-in slide-in-from-top-2 duration-150">
+          <div className="px-6 py-2.5 bg-[var(--color-base-panel)] border-t border-[var(--color-base-border)] flex items-center gap-3 animate-in slide-in-from-top-2 duration-150">
             <Search className="w-4 h-4 text-[var(--color-base-muted)] shrink-0" />
             <input
               autoFocus
@@ -1212,12 +1412,12 @@ const ChatHeader = ({
                 }
               }}
               placeholder="Search in conversation... (Enter for next, Shift+Enter for prev)"
-              className="flex-1 bg-transparent border-none outline-none text-sm text-[var(--color-base-text)] placeholder:text-[var(--color-base-muted)]"
+              className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--color-base-text)] placeholder:text-[var(--color-base-muted)]"
             />
 
             {searchQuery && (
               <div className="flex items-center gap-1.5 shrink-0 select-none">
-                <span className="text-xs text-[var(--color-base-muted)] px-1">
+                <span className="text-[11px] font-mono-tech text-[var(--color-base-muted)] px-1">
                   {messages?.length > 0
                     ? `${currentMatchIndex + 1} of ${messages.length}`
                     : "No matches"}
@@ -1228,7 +1428,7 @@ const ChatHeader = ({
                     <button
                       type="button"
                       onClick={() => jumpToMatch(currentMatchIndex - 1)}
-                      className="p-1 rounded-md text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
+                      className="p-1 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
                       title="Previous match (Shift+Enter)"
                     >
                       <ChevronUp className="w-4 h-4" />
@@ -1236,7 +1436,7 @@ const ChatHeader = ({
                     <button
                       type="button"
                       onClick={() => jumpToMatch(currentMatchIndex + 1)}
-                      className="p-1 rounded-md text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
+                      className="p-1 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
                       title="Next match (Enter)"
                     >
                       <ChevronDown className="w-4 h-4" />
@@ -1252,7 +1452,7 @@ const ChatHeader = ({
                 if (onSearchChange) onSearchChange("");
                 if (setIsSearchOpen) setIsSearchOpen(false);
               }}
-              className="p-1 rounded text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] transition-colors cursor-pointer"
+              className="p-1 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] transition-colors cursor-pointer"
               title="Close search (Esc)"
             >
               <X className="w-4 h-4" />
@@ -1267,21 +1467,21 @@ const ChatHeader = ({
           onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
         >
           <div
-            className="w-full max-w-sm bg-[var(--color-base-panel)] border border-[var(--color-base-border)] rounded-2xl p-5 shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-[var(--color-base-surface)] border border-[var(--color-base-border)] rounded-3xl p-6 shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
                   confirmModal.confirmVariant === "danger"
-                    ? "bg-red-500/15 border-red-500/30 text-red-500"
-                    : "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+                    ? "bg-red-500/15 border-red-500/30 text-red-400"
+                    : "bg-indigo-500/15 border-indigo-500/30 text-indigo-400"
                 }`}
               >
                 <ShieldAlert className="w-5 h-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <h4 className="text-base font-semibold text-[var(--color-base-text)] leading-snug">
+                <h4 className="font-display text-base font-bold text-[var(--color-base-text)] leading-snug">
                   {confirmModal.title}
                 </h4>
                 <p className="text-xs text-[var(--color-base-muted)] mt-0.5 leading-relaxed">
@@ -1294,17 +1494,17 @@ const ChatHeader = ({
               <button
                 type="button"
                 onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-full text-xs font-medium text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmModal.onConfirm}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all shadow-sm active:scale-95 cursor-pointer ${
+                className={`px-5 py-2 rounded-full text-xs font-semibold text-white transition-all shadow-sm active:scale-95 cursor-pointer ${
                   confirmModal.confirmVariant === "danger"
                     ? "bg-red-500 hover:bg-red-600"
-                    : "bg-emerald-500 hover:bg-emerald-600"
+                    : "aurora-bg hover:opacity-90"
                 }`}
               >
                 {confirmModal.confirmLabel}

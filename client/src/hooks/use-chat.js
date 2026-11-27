@@ -10,6 +10,7 @@ export const useChat = create()((set, get) => ({
   chats: [],
   users: [],
   singleChat: null,
+  scheduledMessages: [],
 
   isChatsLoading: false,
   isUsersLoading: false,
@@ -104,6 +105,7 @@ export const useChat = create()((set, get) => ({
             },
             messages,
           },
+          scheduledMessages: [],
         });
         return;
       }
@@ -121,6 +123,8 @@ export const useChat = create()((set, get) => ({
         ),
       }));
 
+      get().fetchScheduledMessages(chatId);
+
       API.post(`/chats/${chatId}/read`).catch(() => {});
       const socket = useSocket.getState().socket;
       if (socket?.connected) {
@@ -134,9 +138,46 @@ export const useChat = create()((set, get) => ({
     }
   },
 
+  fetchScheduledMessages: async (chatId) => {
+    if (!chatId || chatId === "ai") return;
+    try {
+      const res = await API.get(`/chats/${chatId}/scheduled`);
+      set({ scheduledMessages: res.data.data?.messages || [] });
+    } catch {
+      set({ scheduledMessages: [] });
+    }
+  },
+
+  cancelScheduledMessage: async (messageId) => {
+    try {
+      await API.delete(`/chats/scheduled/${messageId}`);
+      set((state) => ({
+        scheduledMessages: state.scheduledMessages.filter((m) => m._id !== messageId),
+      }));
+      toast.success("Scheduled dispatch cancelled");
+    } catch {
+      toast.error("Failed to cancel scheduled message");
+    }
+  },
+
   sendMessage: async (payload) => {
     set({ isSendingMsg: true });
-    const { chatId, replyTo, content, image, audio, audioDuration, isForwarded } = payload;
+    const {
+      chatId,
+      replyTo,
+      content,
+      image,
+      audio,
+      audioDuration,
+      isForwarded,
+      messageType,
+      poll,
+      codeBlock,
+      digest,
+      whisperTo,
+      ephemeralSeconds,
+      scheduledFor,
+    } = payload;
     const { user } = useAuth.getState();
     if (!chatId || !user?._id) {
       set({ isSendingMsg: false });
@@ -145,37 +186,126 @@ export const useChat = create()((set, get) => ({
 
     const socket = useSocket.getState().socket;
 
+    const cleanPayload = {
+      content: content || "",
+      image: image || undefined,
+      audio: audio || undefined,
+      audioDuration: audioDuration || undefined,
+      replyTo: replyTo || undefined,
+      isForwarded: Boolean(isForwarded),
+      messageType: messageType || undefined,
+      poll: poll || undefined,
+      codeBlock: codeBlock || undefined,
+      digest: digest || undefined,
+      whisperTo: whisperTo?.length ? whisperTo : undefined,
+      ephemeralSeconds: ephemeralSeconds || undefined,
+      scheduledFor: scheduledFor || undefined,
+    };
+
     try {
-      if (socket?.connected) {
+      if (socket?.connected && !digest) {
         socket.emit("message:send", {
           chatId,
-          content: content || "",
-          image: image || undefined,
-          audio: audio || undefined,
-          audioDuration: audioDuration || undefined,
-          replyTo: replyTo || undefined,
-          isForwarded: Boolean(isForwarded),
+          ...cleanPayload,
         });
         playOutgoingMessageSound();
+        if (scheduledFor) {
+          toast.success("Message scheduled for future dispatch");
+          setTimeout(() => get().fetchScheduledMessages(chatId), 400);
+        }
       } else {
-        const res = await API.post(`/chats/${chatId}/messages`, {
-          content: content || "",
-          image: image || undefined,
-          audio: audio || undefined,
-          audioDuration: audioDuration || undefined,
-          replyTo: replyTo || undefined,
-          isForwarded: Boolean(isForwarded),
-        });
+        const res = await API.post(`/chats/${chatId}/messages`, cleanPayload);
         const newMsg = res.data.data.message;
-        get().addNewMessage(chatId, newMsg);
-        get().updateChatLastMessage(chatId, newMsg);
+        if (newMsg.isScheduledPending) {
+          set((state) => ({
+            scheduledMessages: [...state.scheduledMessages, newMsg],
+          }));
+          toast.success("Message scheduled for future dispatch");
+        } else {
+          get().addNewMessage(chatId, newMsg);
+          if (!newMsg.whisperTo?.length) {
+            get().updateChatLastMessage(chatId, newMsg);
+          }
+        }
         playOutgoingMessageSound();
       }
-    } catch (err) {
+    } catch {
       toast.error("Failed to send message");
     } finally {
       set({ isSendingMsg: false });
     }
+  },
+
+  votePoll: async (chatId, messageId, optionId) => {
+    const socket = useSocket.getState().socket;
+    try {
+      if (socket?.connected) {
+        socket.emit("poll:vote", { chatId, messageId, optionId });
+      } else {
+        const res = await API.post(`/chats/messages/${messageId}/vote`, { optionId });
+        const updated = res.data.data?.message;
+        if (updated?.poll) {
+          get().updatePoll(messageId, updated.poll);
+        }
+      }
+    } catch {
+      toast.error("Failed to record vote");
+    }
+  },
+
+  updatePoll: (messageId, poll) => {
+    set((state) => {
+      if (!state.singleChat?.messages) return state;
+      return {
+        singleChat: {
+          ...state.singleChat,
+          messages: state.singleChat.messages.map((m) =>
+            m._id === messageId ? { ...m, poll } : m
+          ),
+        },
+      };
+    });
+  },
+
+  askInlineCopilot: async (chatId, prompt) => {
+    if (!chatId || chatId === "ai") return;
+    try {
+      const res = await API.post(`/chats/${chatId}/copilot`, { prompt });
+      const msg = res.data.data?.message;
+      if (msg) {
+        get().addNewMessage(chatId, msg);
+      }
+    } catch {
+      toast.error("WhopAI co-pilot could not respond");
+    }
+  },
+
+  generateDigest: async (chatId, publishToChat = false) => {
+    if (!chatId || chatId === "ai") return null;
+    try {
+      const res = await API.post(`/chats/${chatId}/digest`, { publishToChat });
+      const data = res.data.data;
+      if (publishToChat && data?.message) {
+        get().addNewMessage(chatId, data.message);
+        toast.success("Edition Digest published to thread");
+      }
+      return data?.digest || null;
+    } catch {
+      toast.error("Failed to generate thread digest");
+      return null;
+    }
+  },
+
+  removeExpiredMessage: (messageId) => {
+    set((state) => {
+      if (!state.singleChat?.messages) return state;
+      return {
+        singleChat: {
+          ...state.singleChat,
+          messages: state.singleChat.messages.filter((m) => m._id !== messageId),
+        },
+      };
+    });
   },
 
   editMessage: async (chatId, messageId, content) => {
@@ -199,7 +329,7 @@ export const useChat = create()((set, get) => ({
         const res = await API.patch(`/chats/messages/${messageId}`, { content });
         get().updateSingleMessage(res.data.data.message);
       }
-    } catch (err) {
+    } catch {
       toast.error("Failed to edit message");
     }
   },
@@ -214,7 +344,7 @@ export const useChat = create()((set, get) => ({
       } else {
         await API.delete(`/chats/messages/${messageId}`);
       }
-    } catch (err) {
+    } catch {
       toast.error("Failed to delete message");
     }
   },
@@ -304,7 +434,9 @@ export const useChat = create()((set, get) => ({
                     },
                   }));
                 }
-              } catch {}
+              } catch (err) {
+                void err;
+              }
             }
           }
         }
@@ -459,7 +591,12 @@ export const useChat = create()((set, get) => ({
         });
       }
     }
-    get().updateChatLastMessage(chatId, message);
+    set((state) => ({
+      scheduledMessages: state.scheduledMessages.filter((m) => m._id !== message._id),
+    }));
+    if (!message?.whisperTo?.length) {
+      get().updateChatLastMessage(chatId, message);
+    }
   },
 
   toggleReaction: async (chatId, messageId, emoji) => {

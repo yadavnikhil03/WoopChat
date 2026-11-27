@@ -9,6 +9,7 @@ import ChatListHeader from "./chat-list-header";
 import AvatarWithBadge from "../avatar-with-badge";
 import { cn } from "@/lib/utils";
 import { playIncomingMessageSound, isChatMuted, showDesktopNotification } from "@/lib/sound";
+import { MessageSquarePlus } from "lucide-react";
 
 const ChatList = () => {
   const navigate = useNavigate();
@@ -41,15 +42,19 @@ const ChatList = () => {
     if (totalUnread > 0) {
       document.title = `(${totalUnread}) WhopChat`;
     } else {
-      document.title = "WhopChat";
+      document.title = "WhopChat — Team Messaging & Live Rooms";
     }
   }, [chats]);
 
   useEffect(() => {
     if (!socket) return;
+    const timeouts = typingTimeoutsRef.current;
+
     const handleMessageNew = (msg) => {
       if (msg?.chatId) {
-        useChat.getState().updateChatLastMessage(msg.chatId, msg);
+        if (!msg?.whisperTo?.length) {
+          useChat.getState().updateChatLastMessage(msg.chatId, msg);
+        }
         const currentChat = useChat.getState().singleChat;
         if (currentChat?.chat?._id === msg.chatId) {
           useChat.getState().addNewMessage(msg.chatId, msg);
@@ -110,8 +115,8 @@ const ChatList = () => {
         ...prev,
         [data.chatId]: data.user?.name || "Someone",
       }));
-      clearTimeout(typingTimeoutsRef.current[data.chatId]);
-      typingTimeoutsRef.current[data.chatId] = setTimeout(() => {
+      clearTimeout(timeouts[data.chatId]);
+      timeouts[data.chatId] = setTimeout(() => {
         setTypingMap((prev) => {
           const next = { ...prev };
           delete next[data.chatId];
@@ -122,7 +127,7 @@ const ChatList = () => {
 
     const handleTypingStop = (data) => {
       if (!data?.chatId || data.userId === currentUserId) return;
-      clearTimeout(typingTimeoutsRef.current[data.chatId]);
+      clearTimeout(timeouts[data.chatId]);
       setTypingMap((prev) => {
         const next = { ...prev };
         delete next[data.chatId];
@@ -159,9 +164,9 @@ const ChatList = () => {
       socket.off("typing:start", handleTypingStart);
       socket.off("typing:stop", handleTypingStop);
       socket.off("user:updated");
-      Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
+      Object.values(timeouts).forEach(clearTimeout);
     };
-  }, [socket]);
+  }, [socket, currentUserId]);
 
   const isAIActive = pathname === "/chat/ai";
 
@@ -174,10 +179,10 @@ const ChatList = () => {
           <button
             onClick={() => navigate("/chat/ai")}
             className={cn(
-              "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors outline-none border-b border-[var(--color-base-border)]",
+              "w-full flex items-center gap-3.5 px-5 py-3.5 text-left transition-colors outline-none border-b border-[var(--color-base-border)] cursor-pointer",
               isAIActive
-                ? "bg-[var(--color-base-hover)]"
-                : "hover:bg-[var(--color-base-hover)]/50"
+                ? "bg-[var(--color-base-surface)] border-l-2 border-l-indigo-400"
+                : "hover:bg-[var(--color-base-hover)]/60"
             )}
           >
             <AvatarWithBadge
@@ -187,22 +192,22 @@ const ChatList = () => {
               className="w-10 h-10"
             />
 
-            <div className="flex-1 min-w-0 flex flex-col justify-center py-1">
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <h5 className="text-[14px] font-medium text-[var(--color-base-text)] truncate">
+                  <h5 className="text-[13.5px] font-semibold text-[var(--color-base-text)] truncate">
                     WhopAI Assistant
                   </h5>
-                  <span className="text-[9.5px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 shrink-0">
+                  <span className="text-[9px] font-mono-tech uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 shrink-0">
                     AI
                   </span>
                 </div>
-                <span className="text-[11px] text-emerald-500 font-medium shrink-0">
-                  Online
+                <span className="text-[10px] font-mono-tech uppercase text-cyan-400 font-medium shrink-0">
+                  Ready
                 </span>
               </div>
-              <p className="text-[13px] text-[var(--color-base-muted)] truncate">
-                Ask questions, stream answers, and code...
+              <p className="text-xs text-[var(--color-base-muted)] truncate">
+                Ask questions, draft notes, and explore code
               </p>
             </div>
           </button>
@@ -210,7 +215,21 @@ const ChatList = () => {
 
         {isChatsLoading ? (
           <div className="flex justify-center p-6">
-            <Spinner className="w-5 h-5 text-[var(--color-base-muted)]" />
+            <Spinner className="w-5 h-5 text-indigo-400" />
+          </div>
+        ) : filteredChats.length === 0 ? (
+          <div className="px-6 py-12 text-center space-y-2.5 select-none">
+            <div className="w-10 h-10 mx-auto rounded-full border border-[var(--color-base-border)] bg-[var(--color-base-surface)] flex items-center justify-center text-[var(--color-base-muted)]">
+              <MessageSquarePlus className="w-4 h-4" />
+            </div>
+            <p className="text-xs font-medium text-[var(--color-base-text)]">
+              {searchQuery ? "No matching conversations" : "No conversations yet"}
+            </p>
+            <p className="text-[11px] text-[var(--color-base-muted)] leading-relaxed max-w-[230px] mx-auto">
+              {searchQuery
+                ? "Try searching with a different name or clear the filter."
+                : "Start a direct chat or group room using the compose button above."}
+            </p>
           </div>
         ) : (
           filteredChats.map((chat) => (

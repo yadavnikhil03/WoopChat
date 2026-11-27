@@ -99,34 +99,34 @@ export const NewChatPopover = memo(() => {
           onClick={() => setIsOpen(true)}
           variant="ghost"
           size="icon"
-          className="h-8 w-8 hover:bg-[var(--color-base-hover)]"
+          className="h-9 w-9 rounded-full border border-[var(--color-base-border)] hover:border-indigo-400 hover:bg-[var(--color-base-hover)]"
           title="New conversation"
         >
-          <PenBoxIcon className="!h-4.5 !w-4.5 !stroke-1.5" />
+          <PenBoxIcon className="!h-4 !w-4 !stroke-1.5" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-84 z-[999] p-0 rounded-2xl min-h-[420px] max-h-[80vh] flex flex-col bg-[var(--color-base-panel)] border border-[var(--color-base-border)] shadow-2xl overflow-hidden"
+        className="w-84 z-[999] p-0 rounded-3xl min-h-[420px] max-h-[80vh] flex flex-col bg-[var(--color-base-surface)] border border-[var(--color-base-border)] shadow-2xl overflow-hidden"
       >
-        <div className="border-b border-[var(--color-base-border)] p-3 flex flex-col gap-2.5 bg-[var(--color-base-bg)] shrink-0">
+        <div className="border-b border-[var(--color-base-border)] p-4 flex flex-col gap-3 bg-[var(--color-base-panel)] shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {isGroupMode && (
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="p-1 rounded-md text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
+                  className="p-1 rounded-full text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
                 >
                   <ArrowLeft size={16} />
                 </button>
               )}
-              <h3 className="text-base font-semibold text-[var(--color-base-text)]">
-                {isGroupMode ? "New Group" : "New Chat"}
+              <h3 className="font-display text-base font-bold text-[var(--color-base-text)]">
+                {isGroupMode ? "New Group" : "New Thread"}
               </h3>
             </div>
             {isGroupMode && selectedUsers.length > 0 && (
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <span className="text-[10px] font-mono-tech font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
                 {selectedUsers.length} selected
               </span>
             )}
@@ -139,11 +139,11 @@ export const NewChatPopover = memo(() => {
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="Group name (required)..."
-              className="w-full h-9 px-3 rounded-xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] text-xs text-[var(--color-base-text)] placeholder:text-[var(--color-base-muted)] outline-none focus:border-emerald-500 transition-colors"
+              className="w-full h-9 px-3.5 rounded-full bg-[var(--color-base-bg)] border border-[var(--color-base-border)] text-xs text-[var(--color-base-text)] placeholder:text-[var(--color-base-muted)] outline-none focus:border-indigo-400 transition-colors"
             />
           )}
 
-          <div className="w-full flex items-center gap-2 px-3 h-8.5 rounded-xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)]">
+          <div className="w-full flex items-center gap-2 px-3.5 h-9 rounded-full bg-[var(--color-base-bg)] border border-[var(--color-base-border)]">
             <Search className="w-3.5 h-3.5 text-[var(--color-base-muted)] shrink-0" />
             <input
               type="text"
@@ -164,10 +164,10 @@ export const NewChatPopover = memo(() => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-1.5 py-1.5 space-y-1">
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
           {isUsersLoading ? (
             <div className="flex items-center justify-center p-8">
-              <Spinner className="w-6 h-6 text-emerald-500" />
+              <Spinner className="w-6 h-6 text-indigo-400" />
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-xs text-[var(--color-base-muted)]">
@@ -214,10 +214,10 @@ export const NewChatPopover = memo(() => {
         </div>
 
         {isGroupMode && (
-          <div className="border-t border-[var(--color-base-border)] p-3 bg-[var(--color-base-bg)] shrink-0">
+          <div className="border-t border-[var(--color-base-border)] p-3 bg-[var(--color-base-panel)] shrink-0">
             <Button
               onClick={handleCreateGroup}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium text-xs h-9 rounded-xl transition-all shadow-sm"
+              className="w-full aurora-bg hover:opacity-90 text-white font-semibold text-xs h-10 rounded-full transition-all shadow-sm"
               disabled={
                 isCreatingChat ||
                 !groupName.trim() ||
@@ -244,7 +244,7 @@ const UserAvatar = memo(({ user }) => {
         <div className="flex items-center justify-between gap-1">
           <h5 className="text-[13.5px] font-medium text-[var(--color-base-text)] truncate">{user.name}</h5>
           {online && (
-            <span className="text-[10px] text-emerald-400 font-medium shrink-0">online</span>
+            <span className="text-[10px] font-mono-tech text-cyan-400 font-medium shrink-0">online</span>
           )}
         </div>
         <p className="text-xs text-[var(--color-base-muted)] truncate">
@@ -260,10 +260,10 @@ const NewAIItem = memo(({ onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className="w-full flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--color-base-hover)] transition-colors text-left cursor-pointer"
+    className="w-full flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-[var(--color-base-hover)] transition-colors text-left cursor-pointer"
   >
-    <div className="bg-emerald-500/15 border border-emerald-500/30 p-2 rounded-full shrink-0">
-      <Bot className="size-4 text-emerald-400" />
+    <div className="aurora-bg p-2 rounded-full shrink-0 text-white">
+      <Bot className="size-4" />
     </div>
     <div className="flex flex-col min-w-0">
       <span className="font-semibold text-xs text-[var(--color-base-text)]">Chat with WhopAI</span>
@@ -278,9 +278,9 @@ const NewGroupItem = memo(({ disabled, onClick }) => (
     type="button"
     onClick={onClick}
     disabled={disabled}
-    className="w-full flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--color-base-hover)] transition-colors text-left disabled:opacity-50 cursor-pointer"
+    className="w-full flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-[var(--color-base-hover)] transition-colors text-left disabled:opacity-50 cursor-pointer"
   >
-    <div className="bg-[var(--color-base-hover)] border border-[var(--color-base-border)] p-2 rounded-full shrink-0">
+    <div className="bg-[var(--color-base-panel)] border border-[var(--color-base-border)] p-2 rounded-full shrink-0">
       <UsersIcon className="size-4 text-[var(--color-base-text)]" />
     </div>
     <div className="flex flex-col min-w-0">
@@ -294,12 +294,12 @@ NewGroupItem.displayName = "NewGroupItem";
 const ChatUserItem = memo(({ user, isLoading, disabled, onClick }) => (
   <button
     type="button"
-    className="relative w-full flex items-center gap-2 p-2 rounded-xl hover:bg-[var(--color-base-hover)] transition-colors text-left disabled:opacity-50 cursor-pointer"
+    className="relative w-full flex items-center gap-2 p-2.5 rounded-2xl hover:bg-[var(--color-base-hover)] transition-colors text-left disabled:opacity-50 cursor-pointer"
     disabled={isLoading || disabled}
     onClick={() => onClick(user._id)}
   >
     <UserAvatar user={user} />
-    {isLoading && <Spinner className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />}
+    {isLoading && <Spinner className="w-4 h-4 text-indigo-400 shrink-0 ml-1" />}
   </button>
 ));
 ChatUserItem.displayName = "ChatUserItem";
@@ -308,7 +308,7 @@ const GroupUserItem = memo(({ user, isSelected, onToggle }) => (
   <div
     role="button"
     onClick={() => onToggle(user._id)}
-    className="w-full flex items-center justify-between gap-2 p-2 rounded-xl hover:bg-[var(--color-base-hover)] transition-colors text-left cursor-pointer select-none"
+    className="w-full flex items-center justify-between gap-2 p-2.5 rounded-2xl hover:bg-[var(--color-base-hover)] transition-colors text-left cursor-pointer select-none"
   >
     <UserAvatar user={user} />
     <Checkbox checked={isSelected} onCheckedChange={() => onToggle(user._id)} className="mr-1" />

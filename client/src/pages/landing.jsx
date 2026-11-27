@@ -1,665 +1,802 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import {
-  MessageSquare,
   ArrowRight,
-  Zap,
-  Shield,
-  Video,
-  Phone,
-  Mic,
-  Play,
-  CheckCheck,
-  Smile,
-  Code2,
+  ArrowUpRight,
+  Sparkles,
+  Flame,
+  Radio,
+  Newspaper,
+  BarChart3,
+  Clock,
+  SunMoon,
+  Check,
+  Copy,
   Database,
   Server,
   Component,
-  SunMoon,
-  Sparkles,
-  Pin,
-  Lock,
-  Radio,
-  Share2,
-  Users,
-  Terminal,
-  Activity,
-  Layers,
-  Check,
-  Volume2,
+  Zap,
+  RotateCcw,
 } from "lucide-react";
 import { toggleTheme } from "@/lib/theme";
+import Logo from "@/components/logo";
+import {
+  ScrollProgressBar,
+  RevealBlock,
+  SplitLineReveal,
+  ScrollScrubRow,
+  ScrollScaleFrame,
+} from "@/components/motion/scroll-primitives";
+
+const CAPABILITIES = [
+  {
+    index: "01",
+    tag: "Inline Assistant",
+    title: "Ask @whopai in any room",
+    cursive: "In-thread",
+    desc: "Mention @whopai right inside a conversation to catch up on missed messages, draft a reply, or summarize a voice note.",
+    icon: Sparkles,
+    meta: "Context aware",
+  },
+  {
+    index: "02",
+    tag: "Timed Notes",
+    title: "Disappearing ink",
+    cursive: "Temporary",
+    desc: "Attach an expiration timer (30s, 5m, or 1h) to sensitive notes so they fade out of view and expire from storage.",
+    icon: Flame,
+    meta: "TTL expiration",
+  },
+  {
+    index: "03",
+    tag: "Shared Focus",
+    title: "Sprint timer & walkie-talkie",
+    cursive: "Together",
+    desc: "Run a 25-minute focus timer synced to the room header, or hold to send a short voice burst without starting a call.",
+    icon: Radio,
+    meta: "Room synced",
+  },
+  {
+    index: "04",
+    tag: "Thread Recaps",
+    title: "Editorial digests",
+    cursive: "Readable",
+    desc: "Collect the key moments of a busy channel into a tidy summary card you can post back to the group or save as Markdown.",
+    icon: Newspaper,
+    meta: "Markdown export",
+  },
+  {
+    index: "05",
+    tag: "Quick Decisions",
+    title: "Live polls & code blocks",
+    cursive: "Decisive",
+    desc: "Settle questions with live-updating polls and share syntax-labeled code snippets with one-click copy.",
+    icon: BarChart3,
+    meta: "Real-time votes",
+  },
+  {
+    index: "06",
+    tag: "Quiet Delivery",
+    title: "Whispers & scheduled send",
+    cursive: "Intentional",
+    desc: "Direct a private whisper to specific members of a group, or queue a message to send at a better time.",
+    icon: Clock,
+    meta: "Timed dispatch",
+  },
+];
+
+const ARCHITECTURE_STACK = [
+  {
+    num: "01",
+    layer: "Database",
+    name: "MongoDB & Mongoose",
+    detail: "Compound indexes for fast thread queries, strict ObjectId checks, and TTL indexes for self-expiring messages.",
+    icon: Database,
+  },
+  {
+    num: "02",
+    layer: "API & Worker",
+    name: "Express & TypeScript",
+    detail: "Zod input validation, rate limiting, HTTP-only refresh cookies, and a background dispatcher for scheduled messages.",
+    icon: Server,
+  },
+  {
+    num: "03",
+    layer: "Realtime & Calls",
+    name: "Socket.io & WebRTC",
+    detail: "Room-isolated messaging, read receipts, live poll updates, walkie-talkie audio bursts, and peer-to-peer calls.",
+    icon: Zap,
+  },
+  {
+    num: "04",
+    layer: "Interface",
+    name: "React 19 & Tailwind CSS",
+    detail: "Accessible keyboard shortcuts, persistent light and dark themes, and reduced-motion support.",
+    icon: Component,
+  },
+];
+
+const SAMPLE_SNIPPET = `const ttl = expiresAt ? new Date(expiresAt) : null;\nawait Message.create({\n  chatId,\n  content,\n  expiresAt: ttl,\n});`;
 
 const Landing = () => {
-  const navigate = useNavigate();
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [activeTab, setActiveTab] = useState("chat");
+  const [activeTab, setActiveTab] = useState("poll");
 
-  const fillDemo = () => {
-    navigate("/sign-in?demo=true");
+  const [pollQuestion, setPollQuestion] = useState("When should we review the release notes?");
+  const [pollVotes, setPollVotes] = useState({ a: 1, b: 0, c: 0 });
+  const [selectedVote, setSelectedVote] = useState("a");
+
+  const [burnText, setBurnText] = useState("Staging credentials expire right after this note.");
+  const [burnDuration, setBurnDuration] = useState(10);
+  const [burnLeft, setBurnLeft] = useState(null);
+  const [isBurning, setIsBurning] = useState(false);
+
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const [healthStatus, setHealthStatus] = useState({
+    checked: false,
+    ok: false,
+    pingMs: null,
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    fetch(`${apiBase}/api/health`, { signal: controller.signal })
+      .then((r) => r.json())
+      .then((data) => {
+        setHealthStatus({
+          checked: true,
+          ok: Boolean(data?.success),
+          pingMs: typeof data?.database?.pingMs === "number" ? data.database.pingMs : null,
+        });
+      })
+      .catch(() => {
+        setHealthStatus({ checked: true, ok: false, pingMs: null });
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (burnLeft === null) return;
+    if (burnLeft <= 0) {
+      setIsBurning(true);
+      const t = setTimeout(() => {
+        setBurnLeft(null);
+        setIsBurning(false);
+      }, 650);
+      return () => clearTimeout(t);
+    }
+    const timer = setTimeout(() => setBurnLeft((prev) => (prev !== null ? prev - 1 : null)), 1000);
+    return () => clearTimeout(timer);
+  }, [burnLeft]);
+
+  const handleSandboxVote = (key) => {
+    if (selectedVote === key) return;
+    setPollVotes((prev) => ({
+      ...prev,
+      [selectedVote]: Math.max(0, prev[selectedVote] - 1),
+      [key]: prev[key] + 1,
+    }));
+    setSelectedVote(key);
+  };
+
+  const totalSandboxVotes = pollVotes.a + pollVotes.b + pollVotes.c;
+
+  const startBurnPreview = () => {
+    if (!burnText.trim()) return;
+    setIsBurning(false);
+    setBurnLeft(burnDuration);
+  };
+
+  const copySnippet = () => {
+    navigator.clipboard.writeText(SAMPLE_SNIPPET);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 1800);
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-base-bg)] text-[var(--color-base-text)] font-sans overflow-x-hidden selection:bg-emerald-500/20 selection:text-emerald-400">
+    <div className="min-h-screen bg-[var(--color-base-bg)] text-[var(--color-base-text)] overflow-x-hidden relative selection:bg-indigo-500 selection:text-white">
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[450px] bg-gradient-to-b from-emerald-500/15 via-emerald-600/5 to-transparent blur-3xl opacity-70" />
-        <div className="absolute top-[30%] -left-40 w-[500px] h-[500px] bg-indigo-500/10 blur-3xl rounded-full" />
-        <div className="absolute top-[60%] -right-40 w-[500px] h-[500px] bg-emerald-500/10 blur-3xl rounded-full" />
+        <div className="absolute -top-48 left-[15%] w-[620px] h-[620px] rounded-full bg-indigo-500/20 blur-[140px] animate-aurora-drift" />
+        <div className="absolute top-[28%] right-[5%] w-[520px] h-[520px] rounded-full bg-cyan-500/15 blur-[130px] animate-aurora-drift [animation-delay:-4s]" />
+        <div className="absolute bottom-[5%] left-[25%] w-[560px] h-[560px] rounded-full bg-violet-600/15 blur-[140px] animate-aurora-drift [animation-delay:-8s]" />
       </div>
+      <div className="fixed inset-0 pointer-events-none grain-overlay opacity-[0.025] z-50" />
+      <ScrollProgressBar />
 
-      <nav className="w-full px-6 py-4 flex items-center justify-between border-b border-[var(--color-base-border)]/60 bg-[var(--color-base-bg)]/80 backdrop-blur-xl fixed top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-black shadow-lg shadow-emerald-500/20">
-            <MessageSquare className="w-5 h-5 fill-black stroke-black" />
+      <header className="fixed top-0 left-0 right-0 z-40 border-b border-[var(--color-base-border)] glass-surface">
+        <div className="max-w-[1440px] mx-auto px-5 sm:px-10 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Logo />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-base font-bold tracking-tight text-[var(--color-base-text)]">
-              WhopChat
-            </span>
-            <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              v2.0
-            </span>
+
+          <nav
+            aria-label="Primary navigation"
+            className="hidden md:flex items-center gap-8 text-[11px] font-mono-tech uppercase tracking-[0.16em] text-[var(--color-base-muted)]"
+          >
+            <a href="#sandbox" className="hover:text-[var(--color-base-text)] transition-colors">
+              01 / Interactive
+            </a>
+            <a href="#capabilities" className="hover:text-[var(--color-base-text)] transition-colors">
+              02 / Features
+            </a>
+            <a href="#architecture" className="hover:text-[var(--color-base-text)] transition-colors">
+              03 / Stack
+            </a>
+          </nav>
+
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={toggleTheme}
+              aria-label="Toggle color theme"
+              className="w-9 h-9 rounded-full flex items-center justify-center border border-[var(--color-base-border)] bg-[var(--color-base-surface)] text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:border-indigo-400 transition-colors cursor-pointer"
+            >
+              <SunMoon className="w-4 h-4" />
+            </button>
+            <Link
+              to="/sign-in"
+              className="hidden sm:inline-flex px-4 py-2 text-xs font-medium text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] transition-colors"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/sign-up"
+              className="group relative overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-full aurora-bg text-white text-xs font-semibold tracking-tight shadow-lg shadow-indigo-500/25 transition-transform active:scale-95"
+            >
+              <span>Create account</span>
+              <ArrowUpRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </Link>
           </div>
         </div>
+      </header>
 
-        <div className="hidden md:flex items-center gap-8 text-xs font-medium text-[var(--color-base-muted)]">
-          <a href="#features" className="hover:text-[var(--color-base-text)] transition-colors">
-            Features
-          </a>
-          <a href="#preview" className="hover:text-[var(--color-base-text)] transition-colors">
-            Live Demo
-          </a>
-          <a href="#security" className="hover:text-[var(--color-base-text)] transition-colors">
-            Security
-          </a>
-          <a href="#architecture" className="hover:text-[var(--color-base-text)] transition-colors">
-            Architecture
-          </a>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={toggleTheme}
-            aria-label="Toggle color theme"
-            className="w-9 h-9 rounded-xl flex items-center justify-center border border-[var(--color-base-border)] bg-[var(--color-base-panel)] text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] hover:bg-[var(--color-base-hover)] transition-colors cursor-pointer"
-          >
-            <SunMoon className="w-4 h-4" />
-          </button>
-          <Link
-            to="/sign-in"
-            className="text-xs font-semibold text-[var(--color-base-muted)] hover:text-[var(--color-base-text)] transition-colors px-3 py-2 hidden sm:block"
-          >
-            Sign In
-          </Link>
-          <Link
-            to="/sign-up"
-            className="bg-emerald-500 hover:bg-emerald-400 text-black px-4 py-2 rounded-xl text-xs font-bold tracking-tight transition-all shadow-md shadow-emerald-500/25 active:scale-95 flex items-center gap-1.5"
-          >
-            <span>Open WhopChat</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      </nav>
-
-      <section className="pt-36 sm:pt-44 pb-20 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
-        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.08] max-w-4xl text-[var(--color-base-text)]">
-          Real-time messaging, <br />
-          <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-sky-400 bg-clip-text text-transparent">
-            engineered with pure craft.
-          </span>
-        </h1>
-
-        <p className="text-base sm:text-lg text-[var(--color-base-muted)] leading-relaxed mt-6 mb-10 max-w-2xl">
-          Sub-12ms WebSocket messaging, crystal-clear WebRTC voice and video calls,
-          AES-256-GCM encryption at rest, and an intelligent neural AI assistant —
-          built for high-velocity teams.
-        </p>
-
-        <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 w-full sm:w-auto">
-          <Link
-            to="/sign-up"
-            className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm tracking-tight flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all active:scale-95 cursor-pointer"
-          >
-            <span>Start Chatting Free</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-          <button
-            onClick={fillDemo}
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] hover:bg-[var(--color-base-hover)] text-[var(--color-base-text)] font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span>1-Click Demo Evaluation</span>
-          </button>
-        </div>
-
-        <div className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-8 text-left border-y border-[var(--color-base-border)]/60 py-6 w-full max-w-4xl">
-          <div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-[var(--color-base-text)]">
-              &lt; 12ms
+      <main>
+        <section className="pt-28 sm:pt-36 pb-16 sm:pb-24 px-5 sm:px-10 max-w-[1440px] mx-auto relative">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-base-border)] pb-5 mb-10 sm:mb-14">
+            <div className="flex items-center gap-3 text-[11px] font-mono-tech uppercase tracking-[0.2em] text-[var(--color-base-muted)]">
+              <span className="w-2 h-2 rounded-full bg-[var(--color-accent-cyan)]" />
+              <span>Private Team Messaging &amp; Live Rooms</span>
             </div>
-            <div className="text-xs text-[var(--color-base-muted)] mt-0.5">
-              WebSocket Dispatch
+            <div className="flex items-center gap-6 text-[11px] font-mono-tech uppercase tracking-[0.18em] text-[var(--color-base-muted)]">
+              <span>Encrypted Storage</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">WebRTC Calls</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">Inline @whopai</span>
             </div>
           </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-400">
-              WebRTC P2P
-            </div>
-            <div className="text-xs text-[var(--color-base-muted)] mt-0.5">
-              1080p Video & Voice
-            </div>
-          </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-[var(--color-base-text)]">
-              AES-256-GCM
-            </div>
-            <div className="text-xs text-[var(--color-base-muted)] mt-0.5">
-              Encrypted at Rest
-            </div>
-          </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-sky-400">
-              WhopAI 2.0
-            </div>
-            <div className="text-xs text-[var(--color-base-muted)] mt-0.5">
-              Integrated Neural Assistant
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <section id="preview" className="px-4 sm:px-6 lg:px-12 max-w-7xl mx-auto pb-24">
-        <div className="relative rounded-3xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] shadow-2xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-[var(--color-base-border)] bg-[var(--color-base-bg)] flex items-center justify-between select-none">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-red-500/80 inline-block" />
-              <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
-              <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
-              <span className="text-xs font-mono text-[var(--color-base-muted)] ml-3">
-                whopchat.app/chat/team-core
+          <div className="relative">
+            <h1 className="font-display font-extrabold tracking-[-0.04em] leading-[0.9] text-[clamp(3rem,8.5vw,8rem)] text-[var(--color-base-text)]">
+              <span className="block">
+                <SplitLineReveal delay={40}>Where teams talk,</SplitLineReveal>
               </span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Real-Time Engine Active</span>
+              <span className="flex flex-wrap items-baseline gap-x-4 sm:gap-x-7 my-1 sm:my-2">
+                <SplitLineReveal
+                  delay={140}
+                  className="font-editorial italic font-normal tracking-[-0.02em] text-[clamp(2.5rem,6vw,5.4rem)] text-[var(--color-base-muted)]"
+                >
+                  think
+                </SplitLineReveal>
+                <SplitLineReveal
+                  delay={220}
+                  rotate={1.5}
+                  className="font-cursive font-normal tracking-normal text-[clamp(4.4rem,12vw,11rem)] leading-[0.75] aurora-text pr-4 pt-2"
+                >
+                  together
+                </SplitLineReveal>
+              </span>
+              <span className="block">
+                <SplitLineReveal delay={320}>&amp; decide faster.</SplitLineReveal>
+              </span>
+            </h1>
+
+            <div className="hidden xl:flex absolute right-6 top-8 w-32 h-32 items-center justify-center animate-float-slow pointer-events-none select-none">
+              <svg viewBox="0 0 120 120" className="w-full h-full animate-[spin_22s_linear_infinite]">
+                <defs>
+                  <path
+                    id="studioCircle"
+                    d="M 60, 60 m -44, 0 a 44,44 0 1,1 88,0 a 44,44 0 1,1 -88,0"
+                  />
+                </defs>
+                <text className="fill-[var(--color-base-muted)] text-[9.2px] font-mono-tech uppercase tracking-[0.24em]">
+                  <textPath href="#studioCircle">
+                    ENCRYPTED • REALTIME • WHOPCHAT •
+                  </textPath>
+                </text>
+              </svg>
+              <span className="font-cursive text-4xl aurora-text absolute">W</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[580px]">
-            <div className="hidden lg:flex lg:col-span-4 border-r border-[var(--color-base-border)] bg-[var(--color-base-bg)]/60 flex-col">
-              <div className="p-4 border-b border-[var(--color-base-border)] flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-base-muted)]">
-                  Active Conversations
-                </span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold">
-                  3 Online
-                </span>
-              </div>
-
-              <div className="divide-y divide-[var(--color-base-border)]/40 flex-1 overflow-hidden">
-                <div className="p-3.5 bg-[var(--color-base-panel)] border-l-2 border-emerald-500 flex items-center gap-3 cursor-pointer">
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">
-                      PE
-                    </div>
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--color-base-bg)]" />
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-[var(--color-base-text)] truncate">
-                        Product Engineering
-                      </p>
-                      <span className="text-[10px] text-emerald-400 font-medium">Just now</span>
-                    </div>
-                    <p className="text-[11px] text-[var(--color-base-muted)] truncate mt-0.5">
-                      Alex: WebRTC call latency is down to 8ms!
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 hover:bg-[var(--color-base-hover)] flex items-center gap-3 cursor-pointer transition-colors">
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-xs border border-sky-500/30">
-                      <Sparkles className="w-5 h-5" />
-                    </div>
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--color-base-bg)]" />
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-[var(--color-base-text)] truncate flex items-center gap-1">
-                        <span>WhopAI Assistant</span>
-                        <span className="text-[9px] px-1 rounded bg-sky-500/20 text-sky-400">AI</span>
-                      </p>
-                      <span className="text-[10px] text-[var(--color-base-muted)]">2m</span>
-                    </div>
-                    <p className="text-[11px] text-[var(--color-base-muted)] truncate mt-0.5">
-                      Ready to assist with code, queries, and summaries.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 hover:bg-[var(--color-base-hover)] flex items-center gap-3 cursor-pointer transition-colors">
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xs border border-purple-500/30">
-                      PS
-                    </div>
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--color-base-bg)]" />
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-[var(--color-base-text)] truncate">
-                        Priya Sharma
-                      </p>
-                      <span className="text-[10px] text-[var(--color-base-muted)]">12m</span>
-                    </div>
-                    <p className="text-[11px] text-[var(--color-base-muted)] truncate mt-0.5 flex items-center gap-1">
-                      <Mic className="w-3 h-3 text-emerald-400" />
-                      <span>Voice note (0:24)</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
+          <div className="mt-12 sm:mt-16 pt-8 border-t border-[var(--color-base-border)] grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
+            <div className="lg:col-span-6">
+              <p className="text-base sm:text-xl text-[var(--color-base-muted)] leading-relaxed max-w-xl font-normal">
+                Direct messages, group channels, voice notes, peer-to-peer calls, and an inline assistant — gathered into one{" "}
+                <span className="font-editorial italic text-2xl text-[var(--color-base-text)]">
+                  calm workspace
+                </span>{" "}
+                that stays out of your way.
+              </p>
             </div>
 
-            <div className="lg:col-span-8 flex flex-col bg-[var(--color-base-panel)]">
-              <div className="p-4 border-b border-[var(--color-base-border)] flex items-center justify-between bg-[var(--color-base-bg)]/80">
-                <div className="flex items-center gap-3 text-left">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">
-                    PE
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-[var(--color-base-text)] flex items-center gap-2">
-                      <span>Product Engineering</span>
-                      <span className="text-[10px] font-normal text-emerald-400 font-mono">
-                        #channel
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-[var(--color-base-muted)]">
-                      8 participants • 3 online
-                    </p>
-                  </div>
-                </div>
+            <div className="lg:col-span-6 flex flex-col sm:flex-row lg:justify-end items-stretch sm:items-center gap-3.5">
+              <Link
+                to="/sign-up"
+                className="group px-7 py-4 rounded-full aurora-bg text-white font-semibold text-sm tracking-tight flex items-center justify-center gap-2.5 shadow-xl shadow-indigo-500/25 hover:opacity-95 transition-all active:scale-95"
+              >
+                <span>Create an account</span>
+                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+              </Link>
+              <Link
+                to="/sign-in"
+                className="px-7 py-4 rounded-full border border-[var(--color-base-border)] bg-[var(--color-base-surface)] hover:border-indigo-400 text-[var(--color-base-text)] font-medium text-sm flex items-center justify-center gap-2.5 transition-colors"
+              >
+                <span>Sign in</span>
+              </Link>
+            </div>
+          </div>
+        </section>
 
-                <div className="flex items-center gap-2">
-                  <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-semibold flex items-center gap-1.5">
-                    <Phone className="w-3 h-3 animate-pulse" />
-                    <span>Voice HD Active</span>
-                  </div>
-                  <div className="w-8 h-8 rounded-lg border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex items-center justify-center text-[var(--color-base-muted)]">
-                    <Video className="w-4 h-4" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-4 py-2 border-b border-[var(--color-base-border)] bg-emerald-500/5 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Pin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="text-emerald-400 font-semibold shrink-0">Pinned:</span>
-                  <span className="text-[var(--color-base-text)] truncate">
-                    Production deployment v2.0 verified with AES-256-GCM encryption & WebRTC voice.
-                  </span>
-                </div>
-                <span className="text-[10px] text-[var(--color-base-muted)] shrink-0 font-mono ml-2">
-                  Today
+        <div className="border-y border-[var(--color-base-border)] bg-[var(--color-base-panel)]/70 py-5 overflow-hidden select-none">
+          <div className="flex whitespace-nowrap animate-marquee-left items-center">
+            {[0, 1].map((dup) => (
+              <div key={dup} className="flex items-center gap-10 pr-10">
+                <span className="font-display text-xl sm:text-2xl font-bold tracking-tight">
+                  Direct &amp; Group Rooms
+                </span>
+                <span className="font-cursive text-4xl sm:text-5xl aurora-text leading-none">
+                  Disappearing Ink
+                </span>
+                <span className="font-display text-xl sm:text-2xl font-bold tracking-tight">
+                  Live Polls
+                </span>
+                <span className="font-cursive text-4xl sm:text-5xl aurora-text leading-none">
+                  Focus Sprints
+                </span>
+                <span className="font-display text-xl sm:text-2xl font-bold tracking-tight">
+                  Whispers &amp; Scheduling
+                </span>
+                <span className="font-cursive text-4xl sm:text-5xl aurora-text leading-none">
+                  Thread Digests
                 </span>
               </div>
+            ))}
+          </div>
+        </div>
 
-              <div className="flex-1 p-5 space-y-4 text-left overflow-y-auto">
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                    AK
-                  </div>
-                  <div className="flex-1 max-w-[85%]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold text-[var(--color-base-text)]">
-                        Alex Kumar
-                      </span>
-                      <span className="text-[10px] text-[var(--color-base-muted)]">
-                        10:42 AM
-                      </span>
-                    </div>
-                    <div className="p-3 rounded-2xl rounded-tl-xs bg-[var(--color-base-bg)] border border-[var(--color-base-border)] text-xs text-[var(--color-base-text)] leading-relaxed shadow-xs">
-                      Just conducted a multi-party call test over the WebRTC signaling gateway.
-                      Audio clarity is pristine with zero packet drop!
-                    </div>
-                  </div>
-                </div>
+        <section className="py-24 sm:py-36 overflow-hidden border-b border-[var(--color-base-border)]">
+          <div className="space-y-4 sm:space-y-6 select-none">
+            <ScrollScrubRow direction={1} distance={160} className="flex items-baseline whitespace-nowrap gap-6 -ml-24">
+              <span className="font-display font-extrabold text-[clamp(3rem,8vw,7.5rem)] tracking-[-0.04em] leading-none">
+                Clear threads.
+              </span>
+              <span className="font-cursive text-[clamp(4.4rem,10.5vw,9.5rem)] aurora-text leading-[0.75]">
+                Fewer meetings.
+              </span>
+              <span className="font-display font-extrabold text-[clamp(3rem,8vw,7.5rem)] tracking-[-0.04em] leading-none opacity-25">
+                Calm pace.
+              </span>
+            </ScrollScrubRow>
 
-                <div className="flex items-start gap-3 flex-row-reverse">
-                  <div className="w-7 h-7 rounded-full bg-emerald-500 text-black flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                    ME
-                  </div>
-                  <div className="flex-1 max-w-[85%] flex flex-col items-end">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] text-[var(--color-base-muted)]">
-                        10:44 AM
+            <ScrollScrubRow direction={-1} distance={160} className="flex items-baseline whitespace-nowrap gap-6 -ml-10">
+              <span className="font-cursive text-[clamp(4.4rem,10.5vw,9.5rem)] aurora-text leading-[0.75]">
+                Built to stay
+              </span>
+              <span className="font-display font-extrabold text-[clamp(3rem,8vw,7.5rem)] tracking-[-0.04em] leading-none">
+                out of your way.
+              </span>
+              <span className="font-editorial italic text-[clamp(3rem,7.5vw,7rem)] text-[var(--color-base-muted)] leading-none">
+                every day
+              </span>
+            </ScrollScrubRow>
+          </div>
+        </section>
+
+        <section id="sandbox" className="py-24 sm:py-32 px-5 sm:px-10 max-w-[1440px] mx-auto">
+          <RevealBlock className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+            <div>
+              <span className="text-[11px] font-mono-tech uppercase tracking-[0.2em] text-[var(--color-accent-cyan)] block mb-3">
+                01 / Try how it feels
+              </span>
+              <h2 className="font-display font-extrabold text-3xl sm:text-5xl lg:text-6xl tracking-[-0.03em] leading-[0.98]">
+                Interactive{" "}
+                <span className="font-cursive font-normal text-[1.45em] aurora-text leading-[0.7]">
+                  Controls
+                </span>
+              </h2>
+            </div>
+
+            <div className="inline-flex p-1 rounded-full border border-[var(--color-base-border)] bg-[var(--color-base-panel)] w-fit">
+              {[
+                { id: "poll", label: "Poll" },
+                { id: "burn", label: "Burn Timer" },
+                { id: "code", label: "Code Snippet" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-mono-tech uppercase tracking-wider transition-all cursor-pointer ${
+                    activeTab === tab.id
+                      ? "aurora-bg text-white shadow-sm"
+                      : "text-[var(--color-base-muted)] hover:text-[var(--color-base-text)]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </RevealBlock>
+
+          <ScrollScaleFrame>
+            <div className="p-[1px] rounded-3xl bg-gradient-to-br from-indigo-500/40 via-violet-500/20 to-cyan-400/40 shadow-2xl shadow-indigo-500/10">
+              <div className="rounded-[23px] bg-[var(--color-base-surface)] p-6 sm:p-10 min-h-[380px] flex flex-col justify-between">
+                {activeTab === "poll" && (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                    <div className="lg:col-span-5 space-y-4">
+                      <span className="text-[10px] font-mono-tech uppercase tracking-widest text-indigo-400">
+                        Interactive Poll Preview
                       </span>
-                      <span className="text-xs font-semibold text-[var(--color-base-text)]">
-                        You
-                      </span>
+                      <h3 className="font-display font-bold text-2xl sm:text-3xl tracking-tight">
+                        Settle decisions without long threads.
+                      </h3>
+                      <p className="text-xs sm:text-sm text-[var(--color-base-muted)] leading-relaxed">
+                        Edit the question below and click an option to test how live percentages animate inside any chat room.
+                      </p>
+                      <input
+                        type="text"
+                        value={pollQuestion}
+                        onChange={(e) => setPollQuestion(e.target.value)}
+                        aria-label="Sandbox poll question"
+                        className="w-full h-10 px-4 rounded-xl bg-[var(--color-base-bg)] border border-[var(--color-base-border)] text-xs focus:outline-none focus:border-indigo-400"
+                      />
                     </div>
 
-                    <div className="p-3 rounded-2xl rounded-tr-xs bg-emerald-500 text-black text-xs leading-relaxed shadow-md flex items-center gap-3">
-                      <button
-                        onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                        className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/30 flex items-center justify-center text-black transition-colors cursor-pointer shrink-0"
-                      >
-                        {isPlayingAudio ? (
-                          <Volume2 className="w-4 h-4 animate-pulse" />
-                        ) : (
-                          <Play className="w-4 h-4 fill-black ml-0.5" />
-                        )}
-                      </button>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1 h-5">
-                          {[14, 22, 10, 26, 18, 8, 24, 16, 20, 12, 28, 14, 18, 22, 10, 16].map(
-                            (h, i) => (
-                              <span
-                                key={i}
-                                style={{ height: `${h}px` }}
-                                className={`w-0.5 rounded-full transition-all ${
-                                  isPlayingAudio ? "bg-black animate-pulse" : "bg-black/60"
-                                }`}
+                    <div className="lg:col-span-7">
+                      <div className="p-6 rounded-3xl bg-[var(--color-base-panel)] border border-[var(--color-base-border)] space-y-3">
+                        <div className="flex items-center justify-between text-[10px] font-mono-tech uppercase tracking-wider text-[var(--color-base-muted)]">
+                          <span>Live Poll</span>
+                          <span>{totalSandboxVotes} vote</span>
+                        </div>
+                        <p className="font-display font-bold text-base">
+                          {pollQuestion || "Your poll question"}
+                        </p>
+                        {[
+                          { key: "a", text: "Today at 4:00 PM" },
+                          { key: "b", text: "Tomorrow morning" },
+                          { key: "c", text: "Async in thread" },
+                        ].map((opt) => {
+                          const count = pollVotes[opt.key];
+                          const pct = totalSandboxVotes > 0 ? Math.round((count / totalSandboxVotes) * 100) : 0;
+                          const active = selectedVote === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => handleSandboxVote(opt.key)}
+                              className={`w-full relative overflow-hidden rounded-xl border p-3 text-left transition-colors cursor-pointer ${
+                                active
+                                  ? "border-indigo-400 bg-[var(--color-base-surface)]"
+                                  : "border-[var(--color-base-border)] bg-[var(--color-base-bg)] hover:border-indigo-400/50"
+                              }`}
+                            >
+                              <div
+                                className="absolute inset-y-0 left-0 bg-indigo-500/20 transition-all duration-700 ease-out"
+                                style={{ width: `${pct}%` }}
                               />
-                            )
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] font-medium text-black/75">
-                          <span>0:24</span>
-                          <span className="font-mono bg-black/15 px-1 rounded">1.5x</span>
-                        </div>
+                              <div className="relative flex items-center justify-between text-xs">
+                                <span className="font-medium flex items-center gap-2">
+                                  {active && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                                  <span>{opt.text}</span>
+                                </span>
+                                <span className="font-mono-tech text-[11px] text-indigo-400">
+                                  {pct}%
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "burn" && (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                    <div className="lg:col-span-5 space-y-4">
+                      <span className="text-[10px] font-mono-tech uppercase tracking-widest text-amber-400">
+                        Disappearing Ink Preview
+                      </span>
+                      <h3 className="font-display font-bold text-2xl sm:text-3xl tracking-tight">
+                        Notes that clear themselves when time runs out.
+                      </h3>
+                      <p className="text-xs sm:text-sm text-[var(--color-base-muted)] leading-relaxed">
+                        In the real workspace, timed messages use MongoDB TTL indexes to purge automatically. Test the fade-out effect here.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {[5, 10, 30].map((sec) => (
+                          <button
+                            key={sec}
+                            type="button"
+                            onClick={() => setBurnDuration(sec)}
+                            className={`px-3.5 py-1.5 rounded-full text-xs font-mono-tech cursor-pointer ${
+                              burnDuration === sec
+                                ? "aurora-bg text-white"
+                                : "bg-[var(--color-base-panel)] border border-[var(--color-base-border)] text-[var(--color-base-muted)]"
+                            }`}
+                          >
+                            {sec}s
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={startBurnPreview}
+                          className="ml-auto px-5 py-1.5 rounded-full bg-amber-500 text-black font-semibold text-xs cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-1.5"
+                        >
+                          <Flame className="w-3.5 h-3.5" />
+                          <span>Start Timer</span>
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-emerald-400 font-medium">
-                      <Lock className="w-3 h-3 text-emerald-500" />
-                      <span>AES-256-GCM Encrypted</span>
-                      <CheckCheck className="w-3.5 h-3.5 text-emerald-400 ml-1" />
+                    <div className="lg:col-span-7 space-y-3">
+                      <input
+                        type="text"
+                        value={burnText}
+                        onChange={(e) => setBurnText(e.target.value)}
+                        aria-label="Timed note message"
+                        className="w-full h-10 px-4 rounded-xl bg-[var(--color-base-bg)] border border-[var(--color-base-border)] text-xs focus:outline-none focus:border-amber-400"
+                      />
+                      <div className="min-h-[120px] flex items-center justify-center rounded-3xl border border-dashed border-[var(--color-base-border)] bg-[var(--color-base-panel)]/50 p-6">
+                        {burnLeft === null && !isBurning ? (
+                          <div className="text-center space-y-2">
+                            <p className="text-xs text-[var(--color-base-muted)]">
+                              Click <span className="font-semibold text-[var(--color-base-text)]">Start Timer</span> to watch the timed message dissolve.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={startBurnPreview}
+                              className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:underline cursor-pointer"
+                            >
+                              <RotateCcw className="w-3 h-3" /> Preview now
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            className={`w-full max-w-md p-4 rounded-2xl aurora-bg text-white shadow-lg transition-all ${
+                              isBurning ? "animate-ink-burn" : "animate-message-in"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 text-[10px] font-mono-tech uppercase tracking-wider text-amber-200 mb-1.5">
+                              <Flame className="w-3 h-3 animate-pulse" />
+                              <span>Expires in {burnLeft}s</span>
+                            </div>
+                            <p className="text-xs leading-relaxed">{burnText}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-sky-500 to-emerald-400 text-black flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 max-w-[85%]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold text-[var(--color-base-text)] flex items-center gap-1">
-                        <span>WhopAI Assistant</span>
-                        <span className="text-[9px] px-1 rounded bg-sky-500/20 text-sky-400">AI</span>
+                {activeTab === "code" && (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                    <div className="lg:col-span-5 space-y-4">
+                      <span className="text-[10px] font-mono-tech uppercase tracking-widest text-cyan-400">
+                        Structured Code Sharing
                       </span>
-                      <span className="text-[10px] text-[var(--color-base-muted)]">
-                        10:45 AM
-                      </span>
-                    </div>
-                    <div className="p-3.5 rounded-2xl rounded-tl-xs bg-[var(--color-base-bg)] border border-[var(--color-base-border)] text-xs text-[var(--color-base-text)] leading-relaxed shadow-xs">
-                      <p className="mb-2">
-                        Summary of current channel activities:
+                      <h3 className="font-display font-bold text-2xl sm:text-3xl tracking-tight">
+                        Keep indentation and context intact.
+                      </h3>
+                      <p className="text-xs sm:text-sm text-[var(--color-base-muted)] leading-relaxed">
+                        Send labeled code blocks straight from the composer without losing formatting or digging through pasted walls of text.
                       </p>
-                      <ul className="space-y-1 list-disc list-inside text-[var(--color-base-muted)]">
-                        <li>WebRTC voice connection verified active with STUN negotiation.</li>
-                        <li>Database compound indexes synced on MongoDB 8.x.</li>
-                        <li>All messages secured with authenticated Galois/Counter Mode.</li>
-                      </ul>
+                    </div>
+
+                    <div className="lg:col-span-7">
+                      <div className="rounded-2xl overflow-hidden border border-[var(--color-base-border)] bg-[#05070e] text-[#e2e8f0] shadow-xl">
+                        <div className="px-4 py-2.5 border-b border-white/10 bg-white/5 flex items-center justify-between text-[10px] font-mono-tech">
+                          <span className="uppercase tracking-wider text-cyan-300">
+                            typescript • ephemeral.ts
+                          </span>
+                          <button
+                            type="button"
+                            onClick={copySnippet}
+                            className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer flex items-center gap-1"
+                          >
+                            {copiedCode ? <Check className="w-3 h-3 text-cyan-400" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedCode ? "Copied" : "Copy"}</span>
+                          </button>
+                        </div>
+                        <pre className="p-5 text-xs font-mono-tech overflow-x-auto leading-relaxed">
+                          <code>{SAMPLE_SNIPPET}</code>
+                        </pre>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="p-3 border-t border-[var(--color-base-border)] bg-[var(--color-base-bg)] flex items-center gap-3">
-                <Smile className="w-5 h-5 text-[var(--color-base-muted)] cursor-pointer hover:text-[var(--color-base-text)] transition-colors" />
-                <div className="flex-1 h-9 px-3 rounded-lg bg-[var(--color-base-panel)] border border-[var(--color-base-border)] flex items-center text-xs text-[var(--color-base-muted)]">
-                  Type a message or press 🎙️ for instant voice note...
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-black font-semibold cursor-pointer shadow-xs">
-                  <ArrowRight className="w-4 h-4" />
-                </div>
+                )}
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          </ScrollScaleFrame>
+        </section>
 
-      <section id="features" className="py-20 px-6 max-w-7xl mx-auto text-left">
-        <div className="max-w-2xl mb-14">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2">
-            Built from First Principles
-          </h2>
-          <h3 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--color-base-text)]">
-            Everything your team needs. Nothing it doesn't.
-          </h3>
-          <p className="text-sm text-[var(--color-base-muted)] mt-3 leading-relaxed">
-            Engineered with deep craft, standard MERN architecture, zero third-party bloat,
-            and complete ownership of your communications.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="p-6 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex flex-col justify-between hover:border-emerald-500/40 transition-colors">
+        <section id="capabilities" className="py-24 sm:py-32 px-5 sm:px-10 max-w-[1440px] mx-auto">
+          <RevealBlock className="mb-14 sm:mb-20 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4">
-                <Video className="w-5 h-5" />
-              </div>
-              <h4 className="text-base font-bold text-[var(--color-base-text)] mb-2">
-                WebRTC HD Audio & Video Calls
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Peer-to-peer 1080p video, high-definition voice, screen sharing,
-                and picture-in-picture minimize mode powered by modern browser media engines.
-              </p>
+              <span className="text-[11px] font-mono-tech uppercase tracking-[0.2em] text-[var(--color-accent-cyan)] block mb-3">
+                02 / Capabilities
+              </span>
+              <h2 className="font-display font-extrabold text-3xl sm:text-5xl lg:text-6xl tracking-[-0.03em] leading-[0.98]">
+                Thoughtful tools for{" "}
+                <span className="font-cursive font-normal text-[1.45em] aurora-text leading-[0.7]">
+                  daily work
+                </span>
+              </h2>
             </div>
-            <div className="mt-6 pt-4 border-t border-[var(--color-base-border)] flex items-center gap-2 text-[11px] font-semibold text-emerald-400">
-              <Check className="w-3.5 h-3.5" />
-              <span>Full P2P with STUN fallback</span>
+            <p className="text-sm text-[var(--color-base-muted)] max-w-md leading-relaxed">
+              Every feature is wired through authenticated sockets and validated storage — ready when your team signs in.
+            </p>
+          </RevealBlock>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {CAPABILITIES.map((item, idx) => {
+              const Icon = item.icon;
+              return (
+                <RevealBlock
+                  key={item.index}
+                  delay={idx * 70}
+                  className="group rounded-3xl border border-[var(--color-base-border)] bg-[var(--color-base-surface)]/80 hover:border-indigo-400/60 hover:-translate-y-1 transition-all duration-500 p-8 flex flex-col justify-between min-h-[280px] shadow-sm hover:shadow-xl hover:shadow-indigo-500/10"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-7">
+                      <span className="font-mono-tech text-[11px] text-[var(--color-base-muted)]">
+                        {item.index} / {item.tag}
+                      </span>
+                      <div className="w-10 h-10 rounded-full border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex items-center justify-center text-indigo-400 group-hover:aurora-bg group-hover:text-white group-hover:border-transparent transition-all">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                    </div>
+
+                    <p className="font-cursive text-4xl aurora-text leading-none mb-2">
+                      {item.cursive}
+                    </p>
+                    <h3 className="font-display font-bold text-xl tracking-tight mb-2.5">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-[var(--color-base-muted)] leading-relaxed">
+                      {item.desc}
+                    </p>
+                  </div>
+
+                  <div className="mt-7 pt-4 border-t border-[var(--color-base-border)] flex items-center justify-between text-[10px] font-mono-tech uppercase tracking-[0.18em] text-[var(--color-base-muted)]">
+                    <span>{item.meta}</span>
+                    <ArrowUpRight className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 group-hover:text-[var(--color-accent-cyan)] transition-all" />
+                  </div>
+                </RevealBlock>
+              );
+            })}
+          </div>
+        </section>
+
+        <section id="architecture" className="py-24 sm:py-32 border-t border-[var(--color-base-border)] bg-[var(--color-base-panel)]/45 px-5 sm:px-10">
+          <div className="max-w-[1440px] mx-auto">
+            <RevealBlock className="mb-14">
+              <span className="text-[11px] font-mono-tech uppercase tracking-[0.2em] text-[var(--color-accent-cyan)] block mb-3">
+                03 / Under the hood
+              </span>
+              <h2 className="font-display font-extrabold text-3xl sm:text-5xl tracking-[-0.03em]">
+                Built for{" "}
+                <span className="font-editorial italic font-normal text-[var(--color-base-muted)]">
+                  reliability.
+                </span>
+              </h2>
+            </RevealBlock>
+
+            <div className="divide-y divide-[var(--color-base-border)] border-y border-[var(--color-base-border)]">
+              {ARCHITECTURE_STACK.map((row, idx) => {
+                const Icon = row.icon;
+                return (
+                  <RevealBlock
+                    key={row.num}
+                    delay={idx * 80}
+                    className="group py-7 sm:py-9 px-2 sm:px-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center hover:bg-[var(--color-base-surface)]/70 transition-colors rounded-xl"
+                  >
+                    <div className="md:col-span-2 flex items-center gap-3 text-xs font-mono-tech text-[var(--color-base-muted)]">
+                      <span className="text-[var(--color-accent-cyan)]">{row.num}</span>
+                      <span>{row.layer}</span>
+                    </div>
+                    <div className="md:col-span-4 flex items-center gap-3">
+                      <Icon className="w-5 h-5 text-indigo-400 shrink-0" />
+                      <span className="font-display font-bold text-xl sm:text-2xl tracking-tight group-hover:translate-x-1 transition-transform">
+                        {row.name}
+                      </span>
+                    </div>
+                    <div className="md:col-span-6 text-xs sm:text-sm text-[var(--color-base-muted)] leading-relaxed">
+                      {row.detail}
+                    </div>
+                  </RevealBlock>
+                );
+              })}
             </div>
           </div>
+        </section>
 
-          <div className="p-6 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex flex-col justify-between hover:border-emerald-500/40 transition-colors">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center mb-4">
-                <Zap className="w-5 h-5" />
-              </div>
-              <h4 className="text-base font-bold text-[var(--color-base-text)] mb-2">
-                Sub-12ms Real-Time Sockets
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Socket.io room clusters provide instant messaging, typing indicators,
-                message reactions, and live user presence with automatic reconnection.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-[var(--color-base-border)] flex items-center gap-2 text-[11px] font-semibold text-sky-400">
-              <Check className="w-3.5 h-3.5" />
-              <span>Room multiplexing & read receipts</span>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex flex-col justify-between hover:border-emerald-500/40 transition-colors">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-4">
-                <Lock className="w-5 h-5" />
-              </div>
-              <h4 className="text-base font-bold text-[var(--color-base-text)] mb-2">
-                AES-256-GCM Chat Encryption
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Authenticated encryption at rest using 256-bit derived keys, unique 12-byte
-                initialization vectors, and 16-byte authentication tags per message.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-[var(--color-base-border)] flex items-center gap-2 text-[11px] font-semibold text-purple-400">
-              <Check className="w-3.5 h-3.5" />
-              <span>Zero plaintext exposure in database</span>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex flex-col justify-between hover:border-emerald-500/40 transition-colors">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4">
-                <Mic className="w-5 h-5" />
-              </div>
-              <h4 className="text-base font-bold text-[var(--color-base-text)] mb-2">
-                Voice Notes & Audio Waveforms
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Capture crisp voice notes directly in the browser with live visual waveform
-                scrubbing, variable playback speeds (1x, 1.5x, 2x), and instant playback.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-[var(--color-base-border)] flex items-center gap-2 text-[11px] font-semibold text-emerald-400">
-              <Check className="w-3.5 h-3.5" />
-              <span>Web Audio API visualizer</span>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex flex-col justify-between hover:border-emerald-500/40 transition-colors">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <h4 className="text-base font-bold text-[var(--color-base-text)] mb-2">
-                WhopAI Neural Assistant
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Integrated generative AI partner with conversational memory, code snippet
-                formatting, and instant context reasoning ready inside your sidebar.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-[var(--color-base-border)] flex items-center gap-2 text-[11px] font-semibold text-amber-400">
-              <Check className="w-3.5 h-3.5" />
-              <span>Custom Neural Prism architecture</span>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-panel)] flex flex-col justify-between hover:border-emerald-500/40 transition-colors">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-400 flex items-center justify-center mb-4">
-                <Users className="w-5 h-5" />
-              </div>
-              <h4 className="text-base font-bold text-[var(--color-base-text)] mb-2">
-                Granular Group Administration
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Dedicated group channels with admin promotion/demotion, member kick capabilities,
-                pinned announcements, and media document galleries.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-[var(--color-base-border)] flex items-center gap-2 text-[11px] font-semibold text-teal-400">
-              <Check className="w-3.5 h-3.5" />
-              <span>Role-based access controls</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="architecture" className="py-20 border-t border-[var(--color-base-border)]/60 bg-[var(--color-base-panel)]/40 px-6">
-        <div className="max-w-7xl mx-auto text-left">
-          <div className="max-w-2xl mb-12">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2">
-              Full-Stack Architecture
+        <section className="py-28 sm:py-40 px-5 sm:px-10 max-w-[1440px] mx-auto text-center">
+          <RevealBlock>
+            <p className="font-cursive text-[clamp(3.8rem,9vw,8.5rem)] aurora-text leading-[0.8]">
+              Start
+            </p>
+            <h2 className="font-display font-extrabold text-[clamp(2.2rem,6vw,5.5rem)] tracking-[-0.04em] leading-[0.95] mt-2 mb-6">
+              your workspace
             </h2>
-            <h3 className="text-3xl font-extrabold tracking-tight text-[var(--color-base-text)]">
-              Engineered with modern, open standards.
-            </h3>
+            <p className="text-sm sm:text-base text-[var(--color-base-muted)] max-w-md mx-auto mb-10 leading-relaxed">
+              Register your account, invite teammates, and keep conversations, decisions, and calls in one place.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5">
+              <Link
+                to="/sign-up"
+                className="w-full sm:w-auto px-8 py-4 rounded-full aurora-bg text-white font-semibold text-sm tracking-tight shadow-xl shadow-indigo-500/25 hover:opacity-95 transition-all active:scale-95"
+              >
+                Create account
+              </Link>
+              <Link
+                to="/sign-in"
+                className="w-full sm:w-auto px-8 py-4 rounded-full border border-[var(--color-base-border)] bg-[var(--color-base-surface)] hover:border-indigo-400 text-[var(--color-base-text)] font-medium text-sm transition-colors"
+              >
+                Sign in
+              </Link>
+            </div>
+          </RevealBlock>
+        </section>
+      </main>
+
+      <footer className="border-t border-[var(--color-base-border)] bg-[var(--color-base-panel)]/40 pt-14 pb-8 px-5 sm:px-10 overflow-hidden">
+        <div className="max-w-[1440px] mx-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-12 border-b border-[var(--color-base-border)] text-xs font-mono-tech uppercase tracking-[0.15em] text-[var(--color-base-muted)]">
+            <div className="flex items-center gap-3">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  !healthStatus.checked
+                    ? "bg-slate-400"
+                    : healthStatus.ok
+                    ? "bg-emerald-400 animate-pulse"
+                    : "bg-amber-400"
+                }`}
+              />
+              <span>
+                {!healthStatus.checked
+                  ? "Checking server..."
+                  : healthStatus.ok
+                  ? `API Online${healthStatus.pingMs !== null ? ` • DB ${healthStatus.pingMs}ms` : ""}`
+                  : "API Unreachable"}
+              </span>
+            </div>
+            <div className="flex items-center gap-6">
+              <Link to="/sign-in" className="hover:text-[var(--color-base-text)] transition-colors">
+                Sign in
+              </Link>
+              <Link to="/sign-up" className="hover:text-[var(--color-base-text)] transition-colors">
+                Create account
+              </Link>
+              <Link to="/chat" className="hover:text-[var(--color-base-text)] transition-colors">
+                Workspace
+              </Link>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-5 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-bg)]">
-              <Database className="w-6 h-6 text-emerald-400 mb-3" />
-              <h4 className="text-sm font-bold text-[var(--color-base-text)] mb-1">
-                MongoDB 8.x
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Compound indexed collections, unique constraints, and automatic embedded fallback.
-              </p>
+          <div className="pt-10 flex items-baseline justify-between select-none">
+            <div className="flex items-baseline gap-2 sm:gap-4 leading-none">
+              <span className="font-display font-extrabold tracking-[-0.05em] text-[clamp(3.2rem,13vw,12rem)] text-[var(--color-base-text)]">
+                Whop
+              </span>
+              <span className="font-cursive text-[clamp(4.4rem,16vw,15rem)] aurora-text leading-[0.7]">
+                Chat
+              </span>
             </div>
-
-            <div className="p-5 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-bg)]">
-              <Server className="w-6 h-6 text-sky-400 mb-3" />
-              <h4 className="text-sm font-bold text-[var(--color-base-text)] mb-1">
-                Express 5 & Node.js
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                TypeScript-driven REST endpoints, rate limiting, and HTTP-only cookie token rotation.
-              </p>
-            </div>
-
-            <div className="p-5 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-bg)]">
-              <Component className="w-6 h-6 text-teal-400 mb-3" />
-              <h4 className="text-sm font-bold text-[var(--color-base-text)] mb-1">
-                React 19 & Tailwind v4
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Radix UI primitives, Lucide icons, Sonner toasts, and dynamic theme switching.
-              </p>
-            </div>
-
-            <div className="p-5 rounded-2xl border border-[var(--color-base-border)] bg-[var(--color-base-bg)]">
-              <Radio className="w-6 h-6 text-purple-400 mb-3" />
-              <h4 className="text-sm font-bold text-[var(--color-base-text)] mb-1">
-                Socket.io & WebRTC
-              </h4>
-              <p className="text-xs text-[var(--color-base-muted)] leading-relaxed">
-                Authenticated socket handshakes, room multiplexing, and STUN peer-to-peer streaming.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-24 px-6 text-center max-w-4xl mx-auto">
-        <div className="p-10 sm:p-14 rounded-3xl border border-emerald-500/30 bg-gradient-to-b from-emerald-500/10 via-[var(--color-base-panel)] to-[var(--color-base-bg)] shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 blur-3xl rounded-full pointer-events-none" />
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-[var(--color-base-text)] tracking-tight mb-4">
-            Ready to upgrade your team's communication?
-          </h2>
-          <p className="text-sm sm:text-base text-[var(--color-base-muted)] max-w-lg mx-auto mb-8 leading-relaxed">
-            Experience sub-millisecond real-time messaging, WebRTC calls, and authenticated
-            chat encryption with zero setup hassle.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              to="/sign-up"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm tracking-tight shadow-xl shadow-emerald-500/25 transition-all active:scale-95"
-            >
-              Get Started Free
-            </Link>
-            <button
-              onClick={fillDemo}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl border border-[var(--color-base-border)] bg-[var(--color-base-bg)] hover:bg-[var(--color-base-hover)] text-[var(--color-base-text)] text-sm font-semibold transition-colors cursor-pointer"
-            >
-              Demo Credentials (1-Click)
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-[var(--color-base-border)]/60 py-10 px-6 bg-[var(--color-base-panel)]/30">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-[var(--color-base-muted)]">
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 rounded-lg bg-emerald-500 flex items-center justify-center text-black">
-              <MessageSquare className="w-3.5 h-3.5 fill-black stroke-black" />
-            </div>
-            <span className="font-bold text-[var(--color-base-text)]">WhopChat Platform</span>
-            <span>•</span>
-            <span>Engineered on MERN Stack</span>
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold font-mono text-[11px]">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>All Systems Operational • 99.99% Uptime</span>
-          </div>
-
-          <div className="flex items-center gap-5">
-            <Link to="/sign-in" className="hover:text-[var(--color-base-text)] transition-colors">
-              Sign In
-            </Link>
-            <Link to="/sign-up" className="hover:text-[var(--color-base-text)] transition-colors">
-              Sign Up
-            </Link>
-            <Link to="/chat" className="hover:text-[var(--color-base-text)] transition-colors">
-              Chat
-            </Link>
+            <span className="hidden md:inline text-[11px] font-mono-tech uppercase tracking-[0.2em] text-[var(--color-base-muted)]">
+              © {new Date().getFullYear()}
+            </span>
           </div>
         </div>
       </footer>
