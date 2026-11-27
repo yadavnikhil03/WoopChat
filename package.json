@@ -8,7 +8,6 @@
     "dev:backend": "npm --prefix backend run dev",
     "dev:client": "npm --prefix client run dev",
     "build:backend": "npm --prefix backend run build",
-    "build:client": "npm --prefix client run build",
-    "seed:backend": "npm --prefix backend run seed"
+    "build:client": "npm --prefix client run build"
   }
 }
