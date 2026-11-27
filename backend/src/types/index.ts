@@ -1,7 +1,6 @@
 import { Request } from 'express';
 import { Document, Types } from 'mongoose';
 
-
 export interface IUser extends Document {
   _id: Types.ObjectId;
   name: string;
@@ -20,7 +19,6 @@ export interface IUser extends Document {
   comparePassword(candidate: string): Promise<boolean>;
 }
 
-
 export interface IConversation extends Document {
   _id: Types.ObjectId;
   isGroup: boolean;
@@ -36,12 +34,45 @@ export interface IConversation extends Document {
   updatedAt: Date;
 }
 
-
 export type MessageStatus = 'sent' | 'delivered' | 'read';
+
+export type MessageType =
+  | 'text'
+  | 'poll'
+  | 'code'
+  | 'digest'
+  | 'ai_copilot'
+  | 'whisper';
 
 export interface IMessageReaction {
   emoji: string;
   users: Types.ObjectId[];
+}
+
+export interface IPollOption {
+  id: string;
+  text: string;
+  votes: Types.ObjectId[];
+}
+
+export interface IPollData {
+  question: string;
+  options: IPollOption[];
+  allowMultiple?: boolean;
+}
+
+export interface ICodeBlockData {
+  language: string;
+  title?: string;
+  code: string;
+}
+
+export interface IDigestData {
+  title: string;
+  subtitle: string;
+  highlights: string[];
+  messageCount: number;
+  participantCount: number;
 }
 
 export interface IMessage extends Document {
@@ -49,6 +80,7 @@ export interface IMessage extends Document {
   chatId: Types.ObjectId;
   sender: Types.ObjectId;
   content: string;
+  messageType?: MessageType;
   image?: string;
   audio?: string;
   audioDuration?: number;
@@ -56,6 +88,15 @@ export interface IMessage extends Document {
   status: MessageStatus;
   readBy: Types.ObjectId[];
   reactions?: IMessageReaction[];
+  poll?: IPollData | null;
+  codeBlock?: ICodeBlockData | null;
+  digest?: IDigestData | null;
+  isAICopilot?: boolean;
+  whisperTo?: Types.ObjectId[];
+  ephemeralSeconds?: number | null;
+  expiresAt?: Date | null;
+  scheduledFor?: Date | null;
+  isScheduledPending?: boolean;
   isEdited: boolean;
   isDeleted: boolean;
   isForwarded?: boolean;
@@ -66,7 +107,6 @@ export interface IMessage extends Document {
   updatedAt: Date;
 }
 
-
 export interface IRefreshToken extends Document {
   _id: Types.ObjectId;
   token: string;
@@ -74,7 +114,6 @@ export interface IRefreshToken extends Document {
   expiresAt: Date;
   createdAt: Date;
 }
-
 
 export interface IAIMessage extends Document {
   _id: Types.ObjectId;
@@ -84,7 +123,6 @@ export interface IAIMessage extends Document {
   createdAt: Date;
 }
 
-
 export interface AuthenticatedRequest extends Request {
   user?: {
     _id: string;
@@ -93,14 +131,12 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-
 export interface ApiResponse<T = unknown> {
   success: boolean;
   message?: string;
   data?: T;
   error?: string;
 }
-
 
 export interface PaginationQuery {
   page?: number;

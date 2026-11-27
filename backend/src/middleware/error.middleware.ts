@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { config } from '../config/env';
 import { sendError } from '../utils/response';
 
 export const notFound = (req: Request, res: Response): void => {
@@ -11,6 +12,16 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
+  if (err.type === 'entity.too.large') {
+    sendError(res, 'Payload size exceeds limit', 413);
+    return;
+  }
+
+  if (err.type === 'entity.parse.failed') {
+    sendError(res, 'Malformed JSON payload', 400);
+    return;
+  }
+
   if (err.name === 'CastError') {
     sendError(res, `Invalid format for field: ${err.path}`, 400);
     return;
@@ -32,5 +43,9 @@ export const errorHandler = (
 
   console.error('Unhandled error:', err);
   const statusCode = (err as { statusCode?: number }).statusCode ?? 500;
-  sendError(res, err.message || 'Internal server error', statusCode, err.stack);
+  const safeMessage =
+    !config.isDev && statusCode >= 500
+      ? 'Internal server error'
+      : err.message || 'Internal server error';
+  sendError(res, safeMessage, statusCode, config.isDev ? err.stack : undefined);
 };

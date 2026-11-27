@@ -48,7 +48,7 @@ export class AIService {
 
     let fullReply = '';
 
-    if (openai && config.openai.apiKey.trim().length > 0) {
+    if (openai && config.openai.apiKey.trim().length > 0 && !config.openai.apiKey.includes('your-openai')) {
       try {
         const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
           { role: 'system', content: SYSTEM_PROMPT },
@@ -99,6 +99,66 @@ export class AIService {
     }
 
     res.end();
+  }
+
+  static async generateInlineCopilot(
+    prompt: string,
+    recentMessages: Array<{ senderName: string; content: string; createdAt: Date }>
+  ): Promise<string> {
+    const contextLines = recentMessages
+      .filter((m) => m.content && m.content.trim().length > 0)
+      .slice(-20)
+      .map((m) => `${m.senderName}: ${m.content}`)
+      .join('\n');
+
+    if (openai && config.openai.apiKey.trim().length > 0 && !config.openai.apiKey.includes('your-openai')) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: config.openai.model,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are @whopai, an inline co-pilot inside a team conversation. Be concise, crisp, and formatted with bullet points when summarizing.',
+            },
+            {
+              role: 'user',
+              content: `Recent thread context:\n${contextLines || 'No prior messages.'}\n\nRequest: ${prompt}`,
+            },
+          ],
+        });
+        const text = completion.choices[0]?.message?.content?.trim();
+        if (text) return text;
+      } catch {}
+    }
+
+    const lower = prompt.toLowerCase();
+    const cleanMessages = recentMessages.filter((m) => m.content && m.content.trim().length > 0);
+    if (lower.includes('catch') || lower.includes('summar') || lower.includes('recap')) {
+      if (cleanMessages.length === 0) {
+        return '✨ **Thread Catch-Up**: There are no recent messages to summarize yet. Start the discussion and I will keep track of key points!';
+      }
+      const highlights = cleanMessages
+        .slice(-5)
+        .map((m) => `• **${m.senderName}**: ${m.content.slice(0, 110)}${m.content.length > 110 ? '...' : ''}`)
+        .join('\n');
+      return `✨ **Thread Catch-Up** (${cleanMessages.length} recent messages)\n\n${highlights}\n\n• **Status**: Active discussion ready for next action.`;
+    }
+
+    if (lower.includes('draft') || lower.includes('reply') || lower.includes('write')) {
+      const topic = cleanMessages[cleanMessages.length - 1]?.content?.slice(0, 70) || 'the current topic';
+      return `✨ **Suggested Draft**\n\n"Sounds great — let's lock this in based on ${topic} and sync back once the first milestone is live!"`;
+    }
+
+    if (lower.includes('transcrib') || lower.includes('voice')) {
+      return `🎙️ **Voice Note Digest**\n\n• Key takeaway: Shared status update and quick alignment request.\n• Suggested follow-up: Confirm availability or react to acknowledge.`;
+    }
+
+    return `✨ **WhopAI Co-Pilot**\n\nBased on ${cleanMessages.length} messages in this thread: ${
+      cleanMessages.length > 0
+        ? `the latest focus is "${cleanMessages[cleanMessages.length - 1]?.content?.slice(0, 90)}". Try asking \`@whopai catch me up\` or \`@whopai draft reply\`.`
+        : 'send a few messages and try `@whopai catch me up` anytime!'
+    }`;
   }
 
   private static async _streamFallback(
